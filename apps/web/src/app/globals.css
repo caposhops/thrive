@@ -1,0 +1,160 @@
+@import "tailwindcss";
+
+:root {
+  /* Thrive brand palette — calm, dopamine-friendly, premium */
+  --bg: #0b0712;
+  --bg-elevated: #140d1f;
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface-strong: rgba(255, 255, 255, 0.07);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  --fg: #f5f1ff;
+  --fg-muted: rgba(245, 241, 255, 0.62);
+  --fg-subtle: rgba(245, 241, 255, 0.38);
+
+  --violet: #a78bfa;
+  --rose: #f472b6;
+  --amber: #fbbf24;
+  --teal: #5eead4;
+  --indigo: #818cf8;
+
+  --gradient-aurora:
+    radial-gradient(at 20% 10%, rgba(167, 139, 250, 0.45) 0px, transparent 50%),
+    radial-gradient(at 80% 0%, rgba(244, 114, 182, 0.35) 0px, transparent 50%),
+    radial-gradient(at 0% 90%, rgba(94, 234, 212, 0.25) 0px, transparent 50%),
+    radial-gradient(at 90% 90%, rgba(251, 191, 36, 0.18) 0px, transparent 50%);
+
+  --gradient-brand: linear-gradient(135deg, #a78bfa 0%, #f472b6 50%, #fbbf24 100%);
+  --gradient-calm: linear-gradient(135deg, #818cf8 0%, #5eead4 100%);
+  --gradient-glow: linear-gradient(135deg, rgba(167, 139, 250, 0.25), rgba(244, 114, 182, 0.15));
+
+  --shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 20px 50px -20px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 40px -10px rgba(167, 139, 250, 0.4);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+  --color-border-soft: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-violet: var(--violet);
+  --color-rose: var(--rose);
+  --color-amber: var(--amber);
+  --color-teal: var(--teal);
+  --color-indigo: var(--indigo);
+
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.75rem;
+  --radius-3xl: 2.25rem;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background-image: var(--gradient-aurora);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  min-height: 100vh;
+}
+
+::selection {
+  background: rgba(167, 139, 250, 0.3);
+  color: var(--fg);
+}
+
+/* Utilities */
+.glass {
+  background: var(--surface);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--border);
+}
+
+.glass-strong {
+  background: var(--surface-strong);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid var(--border-strong);
+}
+
+.text-gradient {
+  background: var(--gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.text-gradient-calm {
+  background: var(--gradient-calm);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bg-gradient-brand {
+  background: var(--gradient-brand);
+}
+
+.bg-gradient-calm {
+  background: var(--gradient-calm);
+}
+
+.bg-gradient-glow {
+  background: var(--gradient-glow);
+}
+
+.shadow-soft {
+  box-shadow: var(--shadow-soft);
+}
+
+.shadow-glow {
+  box-shadow: var(--shadow-glow);
+}
+
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -20px) scale(1.05); }
+  66% { transform: translate(-20px, 20px) scale(0.95); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.animate-drift {
+  animation: drift 20s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
