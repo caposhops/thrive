@@ -166,6 +166,22 @@ export default function LandingPage() {
       <footer className="mx-auto w-full max-w-6xl px-6 py-12 text-center text-xs text-fg-subtle">
         <Logo className="mx-auto mb-4 opacity-70" />
         <p>© {new Date().getFullYear()} Thrive. Raise your vibration.</p>
+        <p className="mt-3 flex items-center justify-center gap-4">
+          <Link href="/about" className="transition-colors hover:text-fg">
+            Manifesto
+          </Link>
+          <a
+            href="https://github.com/caposhops/thrive"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="transition-colors hover:text-fg"
+          >
+            Source
+          </a>
+          <Link href="/sign-in" className="transition-colors hover:text-fg">
+            Sign in
+          </Link>
+        </p>
       </footer>
     </>
   );
