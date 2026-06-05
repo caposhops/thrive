@@ -68,7 +68,7 @@ export default function CoachPage() {
   };
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-8rem)] w-full max-w-3xl flex-col">
+    <div className="mx-auto flex h-[calc(100dvh-14rem)] w-full max-w-3xl flex-col sm:h-[calc(100vh-8rem)]">
       <header className="mb-6">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-brand shadow-glow">

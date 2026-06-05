@@ -19,8 +19,18 @@ export function AppNav() {
   return (
     <>
       {/* Mobile bottom nav */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 px-3 pb-4 sm:hidden">
-        <div className="glass-strong mx-auto flex max-w-md items-center justify-between rounded-full px-2 py-2 shadow-soft">
+      <nav
+        className="fixed inset-x-0 bottom-0 z-40 px-3 pb-4 sm:hidden"
+        style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
+      >
+        <div
+          className="mx-auto flex max-w-md items-center justify-between rounded-full border border-white/10 px-2 py-2 shadow-soft"
+          style={{
+            background: "rgba(11, 7, 18, 0.78)",
+            backdropFilter: "blur(24px) saturate(150%)",
+            WebkitBackdropFilter: "blur(24px) saturate(150%)",
+          }}
+        >
           {items.map((item) => {
             const active = pathname.startsWith(item.href);
             return (
