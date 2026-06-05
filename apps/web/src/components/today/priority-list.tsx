@@ -1,10 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Check } from "lucide-react";
 import { useLocalStorage } from "@/lib/use-local-storage";
 import { Card, CardEyebrow, CardTitle, CardDescription } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useUser } from "@/lib/supabase/use-user";
+import {
+  fetchTodayPriorities,
+  createPriority,
+  togglePriority,
+  type PriorityRow,
+} from "@/lib/supabase/priorities";
 
 type Task = { id: string; text: string; done: boolean };
 
@@ -16,18 +23,76 @@ const seed: Task[] = [
 
 const dayKey = () => `thrive:priorities:${new Date().toISOString().slice(0, 10)}`;
 
+const defaultsForNewUser = [
+  "Five minutes of stillness before opening anything",
+  "Ship one small thing toward something that matters",
+  "Move the body — walk, stretch, breathe",
+];
+
 export function PriorityList() {
-  const [tasks, setTasks] = useLocalStorage<Task[]>(dayKey(), seed);
+  const { user } = useUser();
+  const [localTasks, setLocalTasks] = useLocalStorage<Task[]>(dayKey(), seed);
+  const [cloudTasks, setCloudTasks] = useState<PriorityRow[] | null>(null);
   const [draft, setDraft] = useState("");
+  const isAuthed = !!user;
 
-  const toggle = (id: string) =>
-    setTasks((t) => t.map((x) => (x.id === id ? { ...x, done: !x.done } : x)));
+  useEffect(() => {
+    if (!user) {
+      setCloudTasks(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      let rows = await fetchTodayPriorities(user.id);
+      if (cancelled) return;
+      if (rows.length === 0) {
+        // Auto-seed today with the 3 defaults so the user sees something
+        await Promise.all(
+          defaultsForNewUser.map((text, i) => createPriority(user.id, text, i)),
+        );
+        rows = await fetchTodayPriorities(user.id);
+        if (cancelled) return;
+      }
+      setCloudTasks(rows);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
-  const add = (e: React.FormEvent) => {
+  const tasks: Task[] = isAuthed
+    ? (cloudTasks ?? []).map((r) => ({ id: r.id, text: r.text, done: r.done }))
+    : localTasks;
+
+  const toggle = async (id: string) => {
+    if (isAuthed) {
+      setCloudTasks((prev) =>
+        prev ? prev.map((p) => (p.id === id ? { ...p, done: !p.done } : p)) : prev,
+      );
+      const current = cloudTasks?.find((p) => p.id === id);
+      if (current) await togglePriority(id, !current.done);
+    } else {
+      setLocalTasks((t) =>
+        t.map((x) => (x.id === id ? { ...x, done: !x.done } : x)),
+      );
+    }
+  };
+
+  const add = async (e: React.FormEvent) => {
     e.preventDefault();
     const text = draft.trim();
     if (!text || tasks.length >= 3) return;
-    setTasks((t) => [...t, { id: crypto.randomUUID(), text, done: false }]);
+    if (isAuthed && user) {
+      const { row } = await createPriority(user.id, text, tasks.length);
+      if (row) {
+        setCloudTasks((prev) => [...(prev ?? []), row]);
+      }
+    } else {
+      setLocalTasks((t) => [
+        ...t,
+        { id: crypto.randomUUID(), text, done: false },
+      ]);
+    }
     setDraft("");
   };
 
@@ -55,6 +120,7 @@ export function PriorityList() {
                 "group flex w-full items-center gap-3 rounded-2xl p-3 text-left transition-all",
                 "hover:bg-white/[0.04]",
               )}
+              aria-pressed={task.done}
             >
               <span
                 className={cn(
@@ -88,6 +154,7 @@ export function PriorityList() {
               onChange={(e) => setDraft(e.target.value)}
               placeholder="Add a meaningful priority…"
               className="h-full flex-1 bg-transparent text-[15px] text-fg outline-none placeholder:text-fg-subtle"
+              aria-label="New priority"
             />
           </div>
         </form>
