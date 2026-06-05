@@ -46,7 +46,7 @@ export default function LandingPage() {
         <nav className="hidden items-center gap-8 text-sm text-fg-muted sm:flex">
           <a href="#features" className="transition-colors hover:text-fg">Features</a>
           <a href="#philosophy" className="transition-colors hover:text-fg">Philosophy</a>
-          <Link href="/onboarding" className="transition-colors hover:text-fg">Sign in</Link>
+          <Link href="/sign-in" className="transition-colors hover:text-fg">Sign in</Link>
         </nav>
         <Link href="/onboarding">
           <Button size="sm">Start free</Button>
