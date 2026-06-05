@@ -4,25 +4,21 @@ import { Flame, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Card, CardEyebrow } from "@/components/ui/card";
 import { computeAppStreak, isoDay } from "@/lib/streaks";
+import { useUser } from "@/lib/supabase/use-user";
+import { fetchMoodDates } from "@/lib/supabase/moods";
 
-/**
- * Reads mood check-in keys from localStorage to derive the "days thriving" streak.
- * Mood keys are written by MoodCheckin as `thrive:mood:YYYY-MM-DD` for every day
- * the user checked in.
- */
-function readCheckInDates(): string[] {
+function readLocalCheckInDates(): string[] {
   if (typeof window === "undefined") return [];
   const dates: string[] = [];
   for (let i = 0; i < window.localStorage.length; i++) {
     const key = window.localStorage.key(i);
     if (key && key.startsWith("thrive:mood:")) {
       const date = key.slice("thrive:mood:".length);
-      // Mood check-ins are stored as `null` until selected; ignore null values
       try {
         const value = JSON.parse(window.localStorage.getItem(key) ?? "null");
         if (value !== null) dates.push(date);
       } catch {
-        /* ignore malformed entries */
+        /* ignore */
       }
     }
   }
@@ -30,21 +26,39 @@ function readCheckInDates(): string[] {
 }
 
 export function StreakCard() {
+  const { user } = useUser();
   const [days, setDays] = useState(0);
   const [dates, setDates] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    const refresh = () => {
-      const checkIns = readCheckInDates();
+    let cancelled = false;
+
+    const refresh = async () => {
+      let checkIns: string[] = [];
+      if (user) {
+        // Merge cloud + local so newly-added local entries (before round trip) still count
+        try {
+          const cloud = await fetchMoodDates(user.id, 60);
+          checkIns = Array.from(new Set([...cloud, ...readLocalCheckInDates()]));
+        } catch {
+          checkIns = readLocalCheckInDates();
+        }
+      } else {
+        checkIns = readLocalCheckInDates();
+      }
+      if (cancelled) return;
       setDates(new Set(checkIns));
       setDays(computeAppStreak(checkIns));
     };
-    refresh();
-    const id = window.setInterval(refresh, 3000); // catch updates from sibling components
-    return () => window.clearInterval(id);
-  }, []);
 
-  // Render last 14 days as cells, lit if checked in
+    refresh();
+    const id = window.setInterval(refresh, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [user]);
+
   const today = new Date();
   const cells = Array.from({ length: 14 }, (_, i) => {
     const d = new Date(today);
