@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { LogOut, User } from "lucide-react";
-import { useUser, signOut } from "@/lib/supabase/use-user";
+import { Settings, User } from "lucide-react";
+import { useUser } from "@/lib/supabase/use-user";
 
 /**
  * Shown in the sidebar — tells the user whether their data is local-only
@@ -21,20 +21,29 @@ export function AuthPill() {
 
   if (!user) {
     return (
-      <Link
-        href="/sign-in"
-        className="glass group flex items-center justify-between rounded-2xl px-3 py-3 text-xs transition-all hover:bg-white/[0.06]"
-      >
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.05]">
-            <User className="h-3.5 w-3.5 text-fg-muted" />
-          </span>
-          <div>
-            <p className="font-medium text-fg">Sign in to sync</p>
-            <p className="text-fg-subtle">Saved on this device only</p>
+      <div className="flex flex-col gap-2">
+        <Link
+          href="/sign-in"
+          className="glass group flex items-center justify-between rounded-2xl px-3 py-3 text-xs transition-all hover:bg-white/[0.06]"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.05]">
+              <User className="h-3.5 w-3.5 text-fg-muted" />
+            </span>
+            <div>
+              <p className="font-medium text-fg">Sign in to sync</p>
+              <p className="text-fg-subtle">Saved on this device only</p>
+            </div>
           </div>
-        </div>
-      </Link>
+        </Link>
+        <Link
+          href="/settings"
+          className="inline-flex items-center gap-2 self-start rounded-full px-3 py-1 text-[11px] text-fg-subtle transition-colors hover:bg-white/[0.04] hover:text-fg"
+        >
+          <Settings className="h-3 w-3" />
+          Settings
+        </Link>
+      </div>
     );
   }
 
@@ -42,23 +51,20 @@ export function AuthPill() {
   const initial = name[0]?.toUpperCase() ?? "T";
 
   return (
-    <div className="glass flex items-center justify-between gap-2 rounded-2xl px-3 py-2.5">
+    <Link
+      href="/settings"
+      className="glass group flex items-center justify-between gap-2 rounded-2xl px-3 py-2.5 transition-all hover:bg-white/[0.06]"
+    >
       <div className="flex items-center gap-2.5 overflow-hidden">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-brand text-[11px] font-semibold text-black">
           {initial}
         </span>
         <div className="overflow-hidden">
           <p className="truncate text-xs font-medium text-fg">{name}</p>
-          <p className="truncate text-[10px] text-fg-subtle">Synced</p>
+          <p className="truncate text-[10px] text-fg-subtle">Synced · settings</p>
         </div>
       </div>
-      <button
-        onClick={signOut}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-fg-subtle transition-colors hover:bg-white/[0.05] hover:text-fg"
-        aria-label="Sign out"
-      >
-        <LogOut className="h-3.5 w-3.5" />
-      </button>
-    </div>
+      <Settings className="h-3.5 w-3.5 shrink-0 text-fg-subtle transition-colors group-hover:text-fg" />
+    </Link>
   );
 }
