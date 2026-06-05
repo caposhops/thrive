@@ -7,6 +7,8 @@ import { Aurora } from "@/components/brand/aurora";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useUser } from "@/lib/supabase/use-user";
+import { upsertProfile } from "@/lib/supabase/profile";
 
 type Step =
   | { id: "welcome" }
@@ -36,11 +38,13 @@ const steps: Step[] = [
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { user } = useUser();
   const [stepIdx, setStepIdx] = useState(0);
   const [name, setName] = useState("");
   const [intent, setIntent] = useState("");
   const [focus, setFocus] = useState<string[]>([]);
   const [vision, setVision] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const step = steps[stepIdx];
   const next = () => setStepIdx((i) => Math.min(i + 1, steps.length - 1));
@@ -54,12 +58,27 @@ export default function OnboardingPage() {
     (step.id === "vision" && vision.trim().length > 0) ||
     step.id === "ready";
 
-  const finish = () => {
+  const finish = async () => {
+    setSaving(true);
     if (typeof window !== "undefined") {
       localStorage.setItem(
         "thrive:onboarding",
         JSON.stringify({ name, intent, focus, vision, completedAt: Date.now() }),
       );
+    }
+    // If signed in, also persist to the profiles table for cross-device sync.
+    if (user) {
+      try {
+        await upsertProfile(user.id, {
+          display_name: name || undefined,
+          intent: intent || undefined,
+          vision: vision || undefined,
+          focus_areas: focus.length > 0 ? focus : undefined,
+          onboarded_at: new Date().toISOString(),
+        });
+      } catch {
+        // Silent — localStorage write already succeeded; cloud sync is enhancement.
+      }
     }
     router.push("/today");
   };
@@ -211,11 +230,16 @@ export default function OnboardingPage() {
                 Your Thrive space is ready. The work now is gentle, daily, and yours.
               </p>
               <div className="mt-12">
-                <Button size="lg" onClick={finish}>
-                  Enter Thrive
+                <Button size="lg" onClick={finish} disabled={saving}>
+                  {saving ? "Saving…" : "Enter Thrive"}
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </div>
+              {user && (
+                <p className="mt-4 text-xs text-fg-subtle">
+                  Saving to your account so it&apos;s waiting for you anywhere.
+                </p>
+              )}
             </div>
           )}
         </div>

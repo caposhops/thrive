@@ -15,23 +15,54 @@ import {
 import { Card, CardEyebrow, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useUser, signOut } from "@/lib/supabase/use-user";
+import { fetchProfile } from "@/lib/supabase/profile";
 import {
   downloadExport,
   clearAllLocalData,
   countLocalEntries,
 } from "@/lib/thrive-data";
 
+type CloudProfile = {
+  display_name: string | null;
+  intent: string | null;
+  vision: string | null;
+  focus_areas: string[] | null;
+};
+
 export default function SettingsPage() {
   const { user, loading } = useUser();
   const [entries, setEntries] = useState(0);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [resetDone, setResetDone] = useState(false);
+  const [cloudProfile, setCloudProfile] = useState<CloudProfile | null>(null);
 
   useEffect(() => {
     setEntries(countLocalEntries());
   }, [resetDone]);
 
-  const onboarding = readOnboarding();
+  useEffect(() => {
+    if (!user) {
+      setCloudProfile(null);
+      return;
+    }
+    let cancelled = false;
+    fetchProfile(user.id).then(({ profile }) => {
+      if (!cancelled && profile) setCloudProfile(profile as CloudProfile);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const local = readOnboarding();
+  const onboarding = cloudProfile
+    ? {
+        name: cloudProfile.display_name ?? local?.name,
+        intent: cloudProfile.intent ?? local?.intent,
+        focus: cloudProfile.focus_areas ?? local?.focus,
+        vision: cloudProfile.vision ?? local?.vision,
+      }
+    : local;
 
   return (
     <div className="mx-auto w-full max-w-2xl">
