@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Sun, ListChecks, Image as ImageIcon, Sparkles, CircleDot } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AuthPill } from "./auth-pill";
 
 const items = [
   { href: "/today", label: "Today", icon: Sun },
@@ -80,11 +81,12 @@ export function AppNav() {
             );
           })}
         </ul>
-        <div className="mt-auto px-2">
+        <div className="mt-auto flex flex-col gap-3 px-2">
           <div className="glass rounded-2xl p-4 text-xs text-fg-muted">
             <p className="mb-1 font-medium text-fg">Daily intention</p>
             <p className="leading-relaxed">Small steps. Soft heart. Steady breath.</p>
           </div>
+          <AuthPill />
         </div>
       </aside>
     </>
