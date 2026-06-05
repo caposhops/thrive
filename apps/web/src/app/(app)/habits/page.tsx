@@ -1,19 +1,19 @@
 "use client";
 
-import { Flame, Plus, Check } from "lucide-react";
+import { Flame, Plus, Check, AlertCircle } from "lucide-react";
 import { useLocalStorage } from "@/lib/use-local-storage";
 import { Card, CardEyebrow, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { computeStreak, isStreakAtRisk, longestStreak } from "@/lib/streaks";
 
 type Habit = {
   id: string;
   name: string;
   icon: string;
-  streak: number;
   goalPerWeek: number;
   doneToday: boolean;
-  history: boolean[]; // last 28 days
+  history: boolean[]; // last 28 days, history[length-1] = yesterday
   type: "build" | "break";
 };
 
@@ -22,7 +22,6 @@ const seed: Habit[] = [
     id: "1",
     name: "Morning stillness",
     icon: "🌅",
-    streak: 12,
     goalPerWeek: 7,
     doneToday: true,
     history: Array.from({ length: 28 }, (_, i) => i >= 4),
@@ -32,43 +31,58 @@ const seed: Habit[] = [
     id: "2",
     name: "Move the body",
     icon: "🌿",
-    streak: 5,
     goalPerWeek: 5,
     doneToday: false,
-    history: Array.from({ length: 28 }, (_, i) => Math.random() > 0.3),
+    history: [
+      false, true, true, true, false, true, true,
+      true, true, false, true, true, true, true,
+      false, true, true, true, true, true, false,
+      true, true, true, true, false, true, true,
+    ],
     type: "build",
   },
   {
     id: "3",
     name: "Phone-free first hour",
     icon: "📵",
-    streak: 8,
     goalPerWeek: 7,
     doneToday: true,
-    history: Array.from({ length: 28 }, (_, i) => Math.random() > 0.25),
+    history: [
+      false, true, true, true, true, true, true,
+      true, true, true, true, true, true, true,
+      true, false, true, true, true, true, true,
+      true, true, true, true, true, true, true,
+    ],
     type: "break",
   },
   {
     id: "4",
     name: "Cold shower finish",
     icon: "❄️",
-    streak: 3,
     goalPerWeek: 4,
     doneToday: false,
-    history: Array.from({ length: 28 }, (_, i) => Math.random() > 0.5),
+    history: [
+      true, false, true, false, false, true, true,
+      false, true, true, false, false, true, false,
+      true, false, true, true, false, true, true,
+      false, true, true, false, true, true, false,
+    ],
     type: "build",
   },
 ];
 
 export default function HabitsPage() {
-  const [habits, setHabits] = useLocalStorage<Habit[]>("thrive:habits", seed);
+  const [habits, setHabits] = useLocalStorage<Habit[]>("thrive:habits:v2", seed);
 
   const toggle = (id: string) =>
     setHabits((h) =>
       h.map((x) => (x.id === id ? { ...x, doneToday: !x.doneToday } : x)),
     );
 
-  const totalXp = habits.reduce((a, h) => a + h.streak * 10, 0);
+  const totalXp = habits.reduce(
+    (a, h) => a + computeStreak(h.history, h.doneToday) * 10,
+    0,
+  );
   const level = Math.floor(totalXp / 200) + 1;
   const xpInLevel = totalXp % 200;
 
@@ -108,53 +122,80 @@ export default function HabitsPage() {
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {habits.map((habit) => (
-          <Card key={habit.id} className="group">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <span className="text-3xl">{habit.icon}</span>
-                <div>
-                  <h3 className="font-display text-lg font-semibold text-fg">{habit.name}</h3>
-                  <p className="text-xs uppercase tracking-[0.16em] text-fg-subtle">
-                    {habit.type === "build" ? "Building" : "Replacing"} · {habit.goalPerWeek}× / week
-                  </p>
+        {habits.map((habit) => {
+          const streak = computeStreak(habit.history, habit.doneToday);
+          const best = longestStreak(habit.history, habit.doneToday);
+          const atRisk = isStreakAtRisk(habit.history, habit.doneToday);
+          const xp = streak * 10;
+
+          return (
+            <Card key={habit.id} className="group">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">{habit.icon}</span>
+                  <div>
+                    <h3 className="font-display text-lg font-semibold text-fg">{habit.name}</h3>
+                    <p className="text-xs uppercase tracking-[0.16em] text-fg-subtle">
+                      {habit.type === "build" ? "Building" : "Replacing"} · {habit.goalPerWeek}× / week
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <button
-                onClick={() => toggle(habit.id)}
-                className={cn(
-                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 transition-all",
-                  habit.doneToday
-                    ? "border-transparent bg-gradient-brand shadow-glow"
-                    : "border-white/15 hover:border-white/30",
-                )}
-                aria-label={habit.doneToday ? "Mark undone" : "Mark done"}
-              >
-                {habit.doneToday && <Check className="h-5 w-5 text-black" strokeWidth={3} />}
-              </button>
-            </div>
-
-            <div className="mt-5 flex items-center gap-1">
-              {habit.history.slice(-21).map((on, i) => (
-                <span
-                  key={i}
+                <button
+                  onClick={() => toggle(habit.id)}
                   className={cn(
-                    "h-7 flex-1 rounded-md transition-colors",
-                    on ? "bg-gradient-brand opacity-80" : "bg-white/[0.05]",
+                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 transition-all",
+                    habit.doneToday
+                      ? "border-transparent bg-gradient-brand shadow-glow"
+                      : "border-white/15 hover:border-white/30",
                   )}
-                />
-              ))}
-            </div>
+                  aria-label={habit.doneToday ? "Mark undone" : "Mark done"}
+                >
+                  {habit.doneToday && <Check className="h-5 w-5 text-black" strokeWidth={3} />}
+                </button>
+              </div>
 
-            <div className="mt-4 flex items-center justify-between text-xs">
-              <span className="inline-flex items-center gap-1.5 text-amber-300">
-                <Flame className="h-3.5 w-3.5" fill="currentColor" />
-                {habit.streak} day streak
-              </span>
-              <span className="text-fg-subtle">+{habit.streak * 10} XP</span>
-            </div>
-          </Card>
-        ))}
+              <div className="mt-5 flex items-center gap-1">
+                {habit.history.slice(-21).map((on, i) => (
+                  <span
+                    key={i}
+                    className={cn(
+                      "h-7 flex-1 rounded-md transition-colors",
+                      on ? "bg-gradient-brand opacity-80" : "bg-white/[0.05]",
+                    )}
+                  />
+                ))}
+                <span
+                  className={cn(
+                    "h-7 flex-1 rounded-md ring-1 ring-inset",
+                    habit.doneToday
+                      ? "bg-gradient-brand ring-white/20"
+                      : "bg-white/[0.02] ring-white/15",
+                  )}
+                  title="Today"
+                />
+              </div>
+
+              <div className="mt-4 flex items-center justify-between text-xs">
+                {atRisk ? (
+                  <span className="inline-flex items-center gap-1.5 text-amber-300">
+                    <AlertCircle className="h-3.5 w-3.5" />
+                    {streak} day streak · at risk today
+                  </span>
+                ) : streak > 0 ? (
+                  <span className="inline-flex items-center gap-1.5 text-amber-300">
+                    <Flame className="h-3.5 w-3.5" fill="currentColor" />
+                    {streak} day streak
+                  </span>
+                ) : (
+                  <span className="text-fg-subtle">Start a new streak today</span>
+                )}
+                <span className="text-fg-subtle">
+                  Best {best} · +{xp} XP
+                </span>
+              </div>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );
