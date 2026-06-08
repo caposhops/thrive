@@ -3,13 +3,10 @@
 /**
  * Magic-link landing page.
  *
- * Why client-side and not a server route handler?
- *   The Supabase browser client uses PKCE, which stores a `code_verifier` in
- *   browser cookies + localStorage. Server-side `exchangeCodeForSession` can
- *   sometimes fail to read the verifier (cross-domain cookies, samesite quirks,
- *   wrong path). Running the exchange in the browser uses whatever storage the
- *   original sign-in call used, and it's more reliable across browsers + email
- *   clients.
+ * With implicit flow, Supabase puts the session token in the URL fragment
+ * (e.g. /auth/callback#access_token=...). The browser client picks it up
+ * automatically thanks to `detectSessionInUrl: true`, then we just wait for
+ * a session to materialize and redirect.
  */
 
 import { Suspense, useEffect, useState } from "react";
@@ -37,36 +34,58 @@ function CallbackInner() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const code = searchParams.get("code");
-    const errorDescription = searchParams.get("error_description");
+    // Supabase puts errors in the URL fragment for implicit flow, but Next.js
+    // useSearchParams only reads the query string. We need to parse both.
+    const hash = typeof window !== "undefined" ? window.location.hash : "";
+    const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+    const queryError = searchParams.get("error_description");
+    const hashError = hashParams.get("error_description");
+    const errMsg = hashError || queryError;
 
-    if (errorDescription) {
+    if (errMsg) {
       setStatus("error");
-      setErrorMessage(errorDescription);
-      return;
-    }
-
-    if (!code) {
-      setStatus("error");
-      setErrorMessage(
-        "No sign-in code found in the URL. The link may have been opened incorrectly.",
-      );
+      setErrorMessage(errMsg);
       return;
     }
 
     const next = searchParams.get("next") ?? "/today";
     const supabase = getBrowserClient();
 
-    supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
-      if (error) {
-        setStatus("error");
-        setErrorMessage(error.message);
-      } else {
+    // Subscribe first so we don't miss the SIGNED_IN event that fires when
+    // detectSessionInUrl parses the fragment.
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session) {
         setStatus("success");
-        // Use replace so the user can't navigate back to the callback page
+        subscription.unsubscribe();
         router.replace(next);
       }
     });
+
+    // Fallback: if implicit-flow detection already fired before our listener
+    // attached, check directly.
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        setStatus("success");
+        subscription.unsubscribe();
+        router.replace(next);
+      }
+    });
+
+    // Safety net: if nothing happens within 8s, treat as error.
+    const timeout = setTimeout(() => {
+      setStatus("error");
+      setErrorMessage(
+        "We couldn't read the sign-in details from the link. Try requesting a new one.",
+      );
+      subscription.unsubscribe();
+    }, 8000);
+
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, [router, searchParams]);
 
   return (
@@ -100,8 +119,7 @@ function CallbackInner() {
                 Sign-in didn&apos;t go through.
               </h1>
               <p className="mt-3 text-fg-muted">
-                This usually happens when the link is opened in a different browser
-                than the one you requested it from, or if it&apos;s already been used.
+                The link may have expired or already been used.
               </p>
               {errorMessage && (
                 <p className="mt-4 max-w-xs rounded-2xl bg-rose-500/10 p-3 text-xs text-rose-300">
