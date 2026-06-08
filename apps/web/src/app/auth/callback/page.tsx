@@ -12,7 +12,7 @@
  *   clients.
  */
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Sparkles, AlertCircle } from "lucide-react";
 import { Aurora } from "@/components/brand/aurora";
@@ -23,6 +23,14 @@ import { getBrowserClient } from "@/lib/supabase/client";
 type Status = "exchanging" | "success" | "error";
 
 export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={<ExchangingShell />}>
+      <CallbackInner />
+    </Suspense>
+  );
+}
+
+function CallbackInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<Status>("exchanging");
@@ -69,17 +77,7 @@ export default function AuthCallbackPage() {
           <Logo />
         </header>
         <div className="flex flex-1 flex-col items-center justify-center text-center">
-          {status === "exchanging" && (
-            <>
-              <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-brand shadow-glow">
-                <Sparkles className="h-7 w-7 animate-pulse-glow text-black" />
-              </div>
-              <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">
-                Signing you in…
-              </h1>
-              <p className="mt-3 text-fg-muted">A breath. Almost there.</p>
-            </>
-          )}
+          {status === "exchanging" && <ExchangingShellContent />}
 
           {status === "success" && (
             <>
@@ -120,6 +118,36 @@ export default function AuthCallbackPage() {
               </div>
             </>
           )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ExchangingShellContent() {
+  return (
+    <>
+      <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-brand shadow-glow">
+        <Sparkles className="h-7 w-7 animate-pulse-glow text-black" />
+      </div>
+      <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">
+        Signing you in…
+      </h1>
+      <p className="mt-3 text-fg-muted">A breath. Almost there.</p>
+    </>
+  );
+}
+
+function ExchangingShell() {
+  return (
+    <>
+      <Aurora />
+      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-6 py-8">
+        <header className="mb-12">
+          <Logo />
+        </header>
+        <div className="flex flex-1 flex-col items-center justify-center text-center">
+          <ExchangingShellContent />
         </div>
       </div>
     </>
