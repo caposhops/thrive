@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Check, ArrowRight, Compass } from "lucide-react";
+import { Check, ArrowRight, Compass, CalendarDays } from "lucide-react";
 import { Card, CardEyebrow } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { usePlanBlocks } from "@/lib/use-plan-blocks";
@@ -121,17 +121,26 @@ export function NowNextCard() {
         </div>
       )}
 
-      <div className="mt-4 flex items-center justify-between text-xs text-fg-subtle">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-fg-subtle">
         <span>
           {blocks.filter((b) => b.done).length}/{blocks.length} complete
         </span>
-        <Link
-          href="/plan"
-          className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-fg-muted transition-colors hover:bg-white/[0.05] hover:text-fg"
-        >
-          Edit rhythm
-          <ArrowRight className="h-3 w-3" />
-        </Link>
+        <div className="flex items-center gap-1">
+          <Link
+            href="/week"
+            className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-fg-muted transition-colors hover:bg-white/[0.05] hover:text-fg"
+          >
+            <CalendarDays className="h-3 w-3" />
+            Week
+          </Link>
+          <Link
+            href="/plan"
+            className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-fg-muted transition-colors hover:bg-white/[0.05] hover:text-fg"
+          >
+            Edit rhythm
+            <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
       </div>
     </Card>
   );
