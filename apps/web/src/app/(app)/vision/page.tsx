@@ -1,11 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
-import { Sparkles, Upload, Download, Wand2 } from "lucide-react";
+import { Sparkles, Upload, Download, Wand2, Cloud, HardDrive, X } from "lucide-react";
 import { useLocalStorage } from "@/lib/use-local-storage";
 import { Card, CardEyebrow } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useUser } from "@/lib/supabase/use-user";
+import {
+  fetchGeneratedVisionItems,
+  createVisionItem,
+  deleteVisionItem,
+  type VisionItemRow,
+} from "@/lib/supabase/vision";
 
 const boards = [
   {
@@ -38,15 +45,47 @@ const boards = [
   },
 ];
 
-type Generated = { url: string; prompt: string };
+type GeneratedLocal = { url: string; prompt: string };
+
+type DisplayItem = { id: string; url: string; prompt: string };
 
 export default function VisionPage() {
+  const { user } = useUser();
   const [generating, setGenerating] = useState(false);
   const [prompt, setPrompt] = useState("");
-  const [generated, setGenerated] = useLocalStorage<Generated[]>(
+  const [localGenerated, setLocalGenerated] = useLocalStorage<GeneratedLocal[]>(
     "thrive:vision:generated",
     [],
   );
+  const [cloudItems, setCloudItems] = useState<VisionItemRow[] | null>(null);
+
+  const isAuthed = !!user;
+
+  useEffect(() => {
+    if (!user) {
+      setCloudItems(null);
+      return;
+    }
+    let cancelled = false;
+    fetchGeneratedVisionItems(user.id).then((items) => {
+      if (!cancelled) setCloudItems(items);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const items: DisplayItem[] = isAuthed
+    ? (cloudItems ?? []).map((r) => ({
+        id: r.id,
+        url: r.image_url,
+        prompt: r.prompt ?? "",
+      }))
+    : localGenerated.map((g, i) => ({
+        id: `${g.prompt}-${i}`,
+        url: g.url,
+        prompt: g.prompt,
+      }));
 
   const generate = async () => {
     const p = prompt.trim();
@@ -59,10 +98,33 @@ export default function VisionPage() {
         body: JSON.stringify({ prompt: p }),
       });
       const data = (await res.json()) as { image_url: string };
-      setGenerated((g) => [{ url: data.image_url, prompt: p }, ...g].slice(0, 8));
+      if (isAuthed && user) {
+        const { row } = await createVisionItem(user.id, {
+          image_url: data.image_url,
+          prompt: p,
+        });
+        if (row) setCloudItems((prev) => [row, ...(prev ?? [])].slice(0, 24));
+      } else {
+        setLocalGenerated((g) =>
+          [{ url: data.image_url, prompt: p }, ...g].slice(0, 8),
+        );
+      }
       setPrompt("");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (isAuthed) {
+      setCloudItems((prev) => prev?.filter((r) => r.id !== id) ?? prev);
+      await deleteVisionItem(id);
+    } else {
+      // For local items, id is `${prompt}-${i}` — split safely
+      const idx = parseInt(id.split("-").pop() ?? "-1", 10);
+      if (!Number.isNaN(idx) && idx >= 0) {
+        setLocalGenerated((g) => g.filter((_, i) => i !== idx));
+      }
     }
   };
 
@@ -74,6 +136,20 @@ export default function VisionPage() {
           <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight sm:text-5xl">
             The life you&apos;re <span className="text-gradient">walking toward</span>.
           </h1>
+          <p className="mt-2 flex items-center gap-1.5 text-[11px] tracking-wide text-fg-subtle">
+            {isAuthed ? (
+              <>
+                <Cloud className="h-3 w-3 text-teal-300" />
+                <span className="text-teal-300">Synced</span>
+                <span>· generated images saved to your account</span>
+              </>
+            ) : (
+              <>
+                <HardDrive className="h-3 w-3" />
+                <span>Local · saved on this device only</span>
+              </>
+            )}
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm">
@@ -112,11 +188,11 @@ export default function VisionPage() {
             <p className="mt-3 text-xs text-fg-subtle">
               Set FAL_KEY in .env.local to enable real image generation.
             </p>
-            {generated.length > 0 && (
+            {items.length > 0 && (
               <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {generated.map((g, i) => (
+                {items.map((g) => (
                   <div
-                    key={`${g.prompt}-${i}`}
+                    key={g.id}
                     className="group relative aspect-[4/5] overflow-hidden rounded-2xl ring-1 ring-white/10"
                   >
                     <Image
@@ -127,6 +203,13 @@ export default function VisionPage() {
                       className="object-cover"
                       unoptimized
                     />
+                    <button
+                      onClick={() => remove(g.id)}
+                      className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+                      aria-label="Delete vision"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2">
                       <p className="line-clamp-2 text-[10px] leading-tight text-white/90">
                         {g.prompt}
