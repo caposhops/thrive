@@ -11,6 +11,7 @@ import {
   Cloud,
   HardDrive,
   Sparkles,
+  CalendarDays,
 } from "lucide-react";
 import { Card, CardEyebrow, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -113,6 +114,16 @@ export default function PlanPage() {
             </>
           )}
         </p>
+        <div className="mt-4">
+          <Link
+            href="/week"
+            className="glass inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs text-fg-muted transition-colors hover:bg-white/[0.06] hover:text-fg"
+          >
+            <CalendarDays className="h-3.5 w-3.5" />
+            See the whole week
+            <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
       </header>
 
       {/* Notifications banner */}
