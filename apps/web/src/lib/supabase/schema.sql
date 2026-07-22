@@ -133,3 +133,34 @@ create table public.balance_ratings (
 );
 alter table public.balance_ratings enable row level security;
 create policy "self all" on public.balance_ratings for all using (auth.uid() = user_id);
+
+-- =========================
+-- Daily rhythm — the "ritual rhythm" planner
+-- =========================
+create table public.plan_blocks (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  for_date   date not null default current_date,
+  start_time time not null,             -- rough target time, e.g. '09:00'
+  title      text not null,
+  notes      text,
+  done       boolean default false,
+  position   smallint default 0,
+  created_at timestamptz default now()
+);
+create index on public.plan_blocks (user_id, for_date, start_time);
+alter table public.plan_blocks enable row level security;
+create policy "self all" on public.plan_blocks for all using (auth.uid() = user_id);
+
+create table public.day_reflections (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  for_date   date not null default current_date,
+  reflection text,
+  mood_after smallint check (mood_after between 1 and 5),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique (user_id, for_date)
+);
+alter table public.day_reflections enable row level security;
+create policy "self all" on public.day_reflections for all using (auth.uid() = user_id);

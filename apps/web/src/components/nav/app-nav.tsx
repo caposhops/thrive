@@ -2,12 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Sun, ListChecks, Image as ImageIcon, Sparkles, CircleDot } from "lucide-react";
+import {
+  Sun,
+  ListChecks,
+  Image as ImageIcon,
+  Sparkles,
+  CircleDot,
+  Waypoints,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AuthPill } from "./auth-pill";
 
 const items = [
   { href: "/today", label: "Today", icon: Sun },
+  { href: "/plan", label: "Plan", icon: Waypoints },
   { href: "/habits", label: "Habits", icon: ListChecks },
   { href: "/vision", label: "Vision", icon: ImageIcon },
   { href: "/coach", label: "Coach", icon: Sparkles },
@@ -45,8 +53,8 @@ export function AppNav() {
                 {active && (
                   <span className="absolute inset-0 -z-10 rounded-full bg-gradient-glow" />
                 )}
-                <item.icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.2 : 1.6} />
-                <span className="text-[10px] font-medium tracking-wide">{item.label}</span>
+                <item.icon className="h-[17px] w-[17px]" strokeWidth={active ? 2.2 : 1.6} />
+                <span className="text-[9.5px] font-medium tracking-wide">{item.label}</span>
               </Link>
             );
           })}

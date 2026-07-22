@@ -2,6 +2,8 @@ import { MoodCheckin } from "@/components/today/mood-checkin";
 import { PriorityList } from "@/components/today/priority-list";
 import { StreakCard } from "@/components/today/streak-card";
 import { AffirmationCard } from "@/components/today/affirmation-card";
+import { NowNextCard } from "@/components/today/now-next-card";
+import { ReflectionCard } from "@/components/today/reflection-card";
 import { greet, today } from "@/lib/utils";
 
 export default function TodayPage() {
@@ -17,8 +19,10 @@ export default function TodayPage() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2 flex flex-col gap-5">
+          <NowNextCard />
           <MoodCheckin />
           <PriorityList />
+          <ReflectionCard />
           <AffirmationCard />
         </div>
         <div className="flex flex-col gap-5">
