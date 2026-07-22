@@ -164,3 +164,30 @@ create table public.day_reflections (
 );
 alter table public.day_reflections enable row level security;
 create policy "self all" on public.day_reflections for all using (auth.uid() = user_id);
+
+-- =========================
+-- Weekly rhythm — recurring blocks per day of week
+-- =========================
+create table public.recurring_blocks (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references public.profiles(id) on delete cascade,
+  day_of_week smallint not null check (day_of_week between 0 and 6),  -- 0 = Sunday
+  start_time  time not null,
+  title       text not null,
+  active      boolean default true,
+  created_at  timestamptz default now()
+);
+create index on public.recurring_blocks (user_id, day_of_week);
+alter table public.recurring_blocks enable row level security;
+create policy "self all" on public.recurring_blocks for all using (auth.uid() = user_id);
+
+-- Tracks which days have already had their recurring template materialized
+-- into plan_blocks, so we don't re-materialize on every page load.
+create table public.materialized_days (
+  user_id         uuid not null references public.profiles(id) on delete cascade,
+  for_date        date not null,
+  materialized_at timestamptz default now(),
+  primary key (user_id, for_date)
+);
+alter table public.materialized_days enable row level security;
+create policy "self all" on public.materialized_days for all using (auth.uid() = user_id);

@@ -22,6 +22,7 @@ import {
   requestPermission,
   scheduleAll,
 } from "@/lib/plan-notifications";
+import { WeeklyRhythm } from "@/components/plan/weekly-rhythm";
 
 type Suggestion = { start_time: string; title: string };
 
@@ -212,6 +213,16 @@ export default function PlanPage() {
           </div>
         </div>
       )}
+
+      {/* Weekly rhythm template */}
+      <div className="mb-8">
+        <WeeklyRhythm
+          todaysBlocks={blocks.map((b) => ({
+            start_time: b.start_time,
+            title: b.title,
+          }))}
+        />
+      </div>
 
       <div className="mt-8 flex justify-center">
         <Link href="/today">

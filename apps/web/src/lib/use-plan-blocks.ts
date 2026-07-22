@@ -15,6 +15,7 @@ import {
   deleteBlock as cloudDelete,
   type PlanBlockRow,
 } from "./supabase/plan";
+import { materializeToday } from "./supabase/recurring";
 import { normalizeTime } from "./plan-time";
 
 export type PlanBlock = {
@@ -73,6 +74,9 @@ export function usePlanBlocks() {
 
     (async () => {
       if (user) {
+        // Fill in today's blocks from the weekly template if this is the
+        // first visit today. No-op after the first call each day.
+        await materializeToday(user.id);
         const rows = await fetchTodaysPlan(user.id);
         if (cancelled) return;
         setBlocks(sortByTime(rows.map(fromCloud)));
