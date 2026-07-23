@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Check, ArrowRight, Compass, CalendarDays } from "lucide-react";
+import { Check, ArrowRight, Compass, CalendarDays, Play } from "lucide-react";
 import { Card, CardEyebrow } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { usePlanBlocks } from "@/lib/use-plan-blocks";
@@ -15,6 +15,7 @@ import {
   permissionState,
   scheduleAll,
 } from "@/lib/plan-notifications";
+import { useFocusTimer } from "@/lib/use-focus-timer";
 
 /**
  * "Now / Next" widget for the Today page. Shows the current planned block
@@ -22,6 +23,7 @@ import {
  */
 export function NowNextCard() {
   const { blocks, loading, editBlock } = usePlanBlocks();
+  const { state: focusState, start: startFocus } = useFocusTimer();
   const [tick, setTick] = useState(0);
 
   // Re-render every 30s so current/next stays accurate as time passes
@@ -56,6 +58,17 @@ export function NowNextCard() {
   // Silence the tick-driven re-render warning — the value is only used to force refresh
   void tick;
 
+  // Focus button starts a timer sized to the gap until the next block, capped
+  // at 90 min and floored at 10 min. Falls back to 25 min if no next block.
+  const focusMinutesForCurrent = (): number => {
+    if (!next) return 25;
+    const minutes = Math.max(0, minutesUntil(next.start_time));
+    if (minutes < 10) return 10;
+    if (minutes > 90) return 90;
+    return minutes;
+  };
+  const focusActive = focusState.kind !== "idle";
+
   return (
     <Card className="relative overflow-hidden">
       <div className="absolute -right-16 -top-16 h-40 w-40 rounded-full bg-violet-500/25 blur-3xl" />
@@ -88,19 +101,36 @@ export function NowNextCard() {
           )}
         </div>
         {current && (
-          <button
-            onClick={() => editBlock(current.id, { done: !current.done })}
-            className={cn(
-              "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 transition-all",
-              current.done
-                ? "border-transparent bg-gradient-brand text-black shadow-glow"
-                : "border-white/20 text-fg-subtle hover:border-white/40 hover:text-fg",
+          <div className="flex shrink-0 items-center gap-2">
+            {!current.done && !focusActive && (
+              <button
+                onClick={() =>
+                  startFocus({
+                    durationMs: focusMinutesForCurrent() * 60_000,
+                    label: current.title,
+                  })
+                }
+                className="glass inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium text-fg transition-all hover:bg-white/[0.08]"
+                title={`Start a ${focusMinutesForCurrent()}-min focus session`}
+              >
+                <Play className="h-3 w-3" fill="currentColor" />
+                Focus
+              </button>
             )}
-            aria-label={current.done ? "Mark not done" : "Mark done"}
-            aria-pressed={current.done}
-          >
-            <Check className="h-4 w-4" strokeWidth={3} />
-          </button>
+            <button
+              onClick={() => editBlock(current.id, { done: !current.done })}
+              className={cn(
+                "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 transition-all",
+                current.done
+                  ? "border-transparent bg-gradient-brand text-black shadow-glow"
+                  : "border-white/20 text-fg-subtle hover:border-white/40 hover:text-fg",
+              )}
+              aria-label={current.done ? "Mark not done" : "Mark done"}
+              aria-pressed={current.done}
+            >
+              <Check className="h-4 w-4" strokeWidth={3} />
+            </button>
+          </div>
         )}
       </div>
 
