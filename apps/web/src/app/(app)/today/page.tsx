@@ -4,6 +4,7 @@ import { StreakCard } from "@/components/today/streak-card";
 import { AffirmationCard } from "@/components/today/affirmation-card";
 import { NowNextCard } from "@/components/today/now-next-card";
 import { ReflectionCard } from "@/components/today/reflection-card";
+import { FocusTimer } from "@/components/today/focus-timer";
 import { greet, today } from "@/lib/utils";
 
 export default function TodayPage() {
@@ -27,14 +28,7 @@ export default function TodayPage() {
         </div>
         <div className="flex flex-col gap-5">
           <StreakCard />
-          <div className="glass rounded-3xl p-6 shadow-soft">
-            <p className="text-xs uppercase tracking-[0.18em] text-fg-subtle">Focus session</p>
-            <p className="mt-3 font-display text-2xl font-semibold tracking-tight">25:00</p>
-            <p className="mt-1 text-sm text-fg-muted">Pomodoro · soft chime at end</p>
-            <button className="mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-full bg-gradient-brand px-5 text-sm font-medium text-black shadow-glow active:scale-[0.98]">
-              Begin focus
-            </button>
-          </div>
+          <FocusTimer />
           <div className="glass rounded-3xl p-6 shadow-soft">
             <p className="text-xs uppercase tracking-[0.18em] text-fg-subtle">Energy</p>
             <p className="mt-3 text-sm text-fg-muted">Right now</p>

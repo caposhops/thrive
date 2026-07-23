@@ -191,3 +191,21 @@ create table public.materialized_days (
 );
 alter table public.materialized_days enable row level security;
 create policy "self all" on public.materialized_days for all using (auth.uid() = user_id);
+
+-- =========================
+-- Focus sessions — logged Pomodoro runs
+-- =========================
+create table public.focus_sessions (
+  id               uuid primary key default gen_random_uuid(),
+  user_id          uuid not null references public.profiles(id) on delete cascade,
+  started_at       timestamptz not null,
+  ended_at         timestamptz,
+  duration_seconds integer not null,   -- planned duration
+  actual_seconds   integer,             -- actual completed time
+  label            text,
+  completed        boolean default false,
+  created_at       timestamptz default now()
+);
+create index on public.focus_sessions (user_id, started_at desc);
+alter table public.focus_sessions enable row level security;
+create policy "self all" on public.focus_sessions for all using (auth.uid() = user_id);
