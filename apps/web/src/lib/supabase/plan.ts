@@ -7,6 +7,7 @@ export type PlanBlockRow = {
   id: string;
   for_date: string;
   start_time: string; // "HH:MM:SS" from Postgres time type
+  duration_minutes: number | null;
   title: string;
   notes: string | null;
   done: boolean;
@@ -22,11 +23,14 @@ export type DayReflectionRow = {
   updated_at: string;
 };
 
+const SELECT_COLS =
+  "id, for_date, start_time, duration_minutes, title, notes, done, position, created_at";
+
 export async function fetchTodaysPlan(userId: string): Promise<PlanBlockRow[]> {
   const supabase = getBrowserClient();
   const { data, error } = await supabase
     .from("plan_blocks")
-    .select("id, for_date, start_time, title, notes, done, position, created_at")
+    .select(SELECT_COLS)
     .eq("user_id", userId)
     .eq("for_date", todayISO())
     .order("start_time", { ascending: true });
@@ -36,7 +40,13 @@ export async function fetchTodaysPlan(userId: string): Promise<PlanBlockRow[]> {
 
 export async function createBlock(
   userId: string,
-  block: { start_time: string; title: string; notes?: string; position?: number },
+  block: {
+    start_time: string;
+    title: string;
+    notes?: string;
+    position?: number;
+    duration_minutes?: number | null;
+  },
 ) {
   const supabase = getBrowserClient();
   const { data, error } = await supabase
@@ -45,18 +55,24 @@ export async function createBlock(
       user_id: userId,
       for_date: todayISO(),
       start_time: block.start_time,
+      duration_minutes: block.duration_minutes ?? null,
       title: block.title,
       notes: block.notes ?? null,
       position: block.position ?? 0,
     })
-    .select("id, for_date, start_time, title, notes, done, position, created_at")
+    .select(SELECT_COLS)
     .single();
   return { row: data as PlanBlockRow | null, error };
 }
 
 export async function updateBlock(
   id: string,
-  patch: Partial<Pick<PlanBlockRow, "start_time" | "title" | "notes" | "done" | "position">>,
+  patch: Partial<
+    Pick<
+      PlanBlockRow,
+      "start_time" | "duration_minutes" | "title" | "notes" | "done" | "position"
+    >
+  >,
 ) {
   const supabase = getBrowserClient();
   return supabase.from("plan_blocks").update(patch).eq("id", id);

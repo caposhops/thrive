@@ -21,6 +21,7 @@ import { normalizeTime } from "./plan-time";
 export type PlanBlock = {
   id: string;
   start_time: string; // "HH:MM"
+  duration_minutes: number | null;
   title: string;
   done: boolean;
 };
@@ -51,6 +52,7 @@ function fromCloud(row: PlanBlockRow): PlanBlock {
   return {
     id: row.id,
     start_time: normalizeTime(row.start_time),
+    duration_minutes: row.duration_minutes,
     title: row.title,
     done: row.done,
   };
@@ -92,12 +94,18 @@ export function usePlanBlocks() {
   }, [user, authLoading]);
 
   const addBlock = useCallback(
-    async (block: { start_time: string; title: string }) => {
+    async (block: {
+      start_time: string;
+      title: string;
+      duration_minutes?: number | null;
+    }) => {
       const normalized = { ...block, start_time: normalizeTime(block.start_time) };
+      const durationMinutes = normalized.duration_minutes ?? null;
       if (isAuthed && user) {
         const { row } = await cloudCreate(user.id, {
           start_time: normalized.start_time,
           title: normalized.title,
+          duration_minutes: durationMinutes,
         });
         if (row) {
           setBlocks((prev) => sortByTime([...prev, fromCloud(row)]));
@@ -106,6 +114,7 @@ export function usePlanBlocks() {
         const nb: PlanBlock = {
           id: crypto.randomUUID(),
           start_time: normalized.start_time,
+          duration_minutes: durationMinutes,
           title: normalized.title,
           done: false,
         };
@@ -133,7 +142,12 @@ export function usePlanBlocks() {
   );
 
   const editBlock = useCallback(
-    async (id: string, patch: Partial<Pick<PlanBlock, "start_time" | "title" | "done">>) => {
+    async (
+      id: string,
+      patch: Partial<
+        Pick<PlanBlock, "start_time" | "duration_minutes" | "title" | "done">
+      >,
+    ) => {
       const normalizedPatch = patch.start_time
         ? { ...patch, start_time: normalizeTime(patch.start_time) }
         : patch;

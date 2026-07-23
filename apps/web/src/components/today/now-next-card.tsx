@@ -10,7 +10,10 @@ import {
   findCurrentAndNext,
   formatTime12,
   minutesUntil,
+  nowMinutes,
+  timeToMinutes,
 } from "@/lib/plan-time";
+import { formatDurationShort } from "@/lib/plan-duration";
 import {
   permissionState,
   scheduleAll,
@@ -60,9 +63,29 @@ export function NowNextCard() {
   // Silence the tick-driven re-render warning — the value is only used to force refresh
   void tick;
 
-  // Focus button starts a timer sized to the gap until the next block, capped
-  // at 90 min and floored at 10 min. Falls back to 25 min if no next block.
+  // Compute how long the current block has left, based on:
+  //   1. Explicit duration (block.duration_minutes) if set
+  //   2. Otherwise, gap until the next block
+  //   3. Falls back to null (open-ended)
+  const currentEndMinutes = (() => {
+    if (!current) return null;
+    if (current.duration_minutes != null) {
+      return timeToMinutes(current.start_time) + current.duration_minutes;
+    }
+    if (next) return timeToMinutes(next.start_time);
+    return null;
+  })();
+  const currentMinutesLeft =
+    currentEndMinutes != null
+      ? Math.max(0, currentEndMinutes - nowMinutes())
+      : null;
+
+  // Focus button prefers the explicit duration; falls back to gap-until-next,
+  // capped 10–90 min, default 25 min.
   const focusMinutesForCurrent = (): number => {
+    if (current?.duration_minutes) {
+      return Math.max(10, Math.min(90, currentMinutesLeft ?? current.duration_minutes));
+    }
     if (!next) return 25;
     const minutes = Math.max(0, minutesUntil(next.start_time));
     if (minutes < 10) return 10;
@@ -90,6 +113,16 @@ export function NowNextCard() {
               </h3>
               <p className="mt-1 text-xs uppercase tracking-[0.16em] text-fg-subtle">
                 Since {formatTime12(current.start_time)}
+                {currentMinutesLeft != null && !current.done && (
+                  <>
+                    {" · "}
+                    <span className="text-fg-muted">
+                      {currentMinutesLeft > 0
+                        ? `${formatDurationShort(currentMinutesLeft)} left`
+                        : "time's up"}
+                    </span>
+                  </>
+                )}
               </p>
             </>
           ) : (
