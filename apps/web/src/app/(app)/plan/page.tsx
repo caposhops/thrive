@@ -24,6 +24,7 @@ import {
   scheduleAll,
 } from "@/lib/plan-notifications";
 import { WeeklyRhythm } from "@/components/plan/weekly-rhythm";
+import { CompletionFlash, useCompletionFlash } from "@/components/completion-flash";
 
 type Suggestion = { start_time: string; title: string };
 
@@ -45,6 +46,7 @@ export default function PlanPage() {
   >("default");
   const [draftTime, setDraftTime] = useState(defaultNextTime(blocks));
   const [draftTitle, setDraftTitle] = useState("");
+  const { flash, trigger } = useCompletionFlash();
 
   useEffect(() => {
     setPermission(permissionState());
@@ -92,6 +94,7 @@ export default function PlanPage() {
 
   return (
     <div className="mx-auto w-full max-w-3xl">
+      <CompletionFlash flash={flash} />
       <header className="mb-8">
         <p className="text-xs uppercase tracking-[0.2em] text-fg-subtle">Design your rhythm</p>
         <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight sm:text-5xl">
@@ -167,7 +170,16 @@ export default function PlanPage() {
                 block={block}
                 onTitleChange={(title) => editBlock(block.id, { title })}
                 onTimeChange={(start_time) => editBlock(block.id, { start_time })}
-                onToggleDone={() => editBlock(block.id, { done: !block.done })}
+                onToggleDone={() => {
+                  const wasDone = block.done;
+                  editBlock(block.id, { done: !block.done });
+                  if (!wasDone) {
+                    const remaining = blocks.filter(
+                      (b) => !b.done && b.id !== block.id,
+                    ).length;
+                    trigger(remaining === 0 ? "day-complete" : "block-done");
+                  }
+                }}
                 onDelete={() => removeBlock(block.id)}
               />
             </li>

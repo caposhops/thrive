@@ -12,6 +12,7 @@ import {
   togglePriority,
   type PriorityRow,
 } from "@/lib/supabase/priorities";
+import { CompletionFlash, useCompletionFlash } from "@/components/completion-flash";
 
 type Task = { id: string; text: string; done: boolean };
 
@@ -35,6 +36,7 @@ export function PriorityList() {
   const [cloudTasks, setCloudTasks] = useState<PriorityRow[] | null>(null);
   const [draft, setDraft] = useState("");
   const isAuthed = !!user;
+  const { flash, trigger } = useCompletionFlash();
 
   useEffect(() => {
     if (!user) {
@@ -65,6 +67,7 @@ export function PriorityList() {
     : localTasks;
 
   const toggle = async (id: string) => {
+    const wasDone = tasks.find((t) => t.id === id)?.done ?? false;
     if (isAuthed) {
       setCloudTasks((prev) =>
         prev ? prev.map((p) => (p.id === id ? { ...p, done: !p.done } : p)) : prev,
@@ -76,6 +79,7 @@ export function PriorityList() {
         t.map((x) => (x.id === id ? { ...x, done: !x.done } : x)),
       );
     }
+    if (!wasDone) trigger("priority-done"); // only celebrate on unchecked → done
   };
 
   const add = async (e: React.FormEvent) => {
@@ -100,6 +104,7 @@ export function PriorityList() {
 
   return (
     <Card>
+      <CompletionFlash flash={flash} />
       <div className="flex items-start justify-between gap-4">
         <div>
           <CardEyebrow>Top 3 today</CardEyebrow>
