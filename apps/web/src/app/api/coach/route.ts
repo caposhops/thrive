@@ -50,8 +50,12 @@ export async function POST(req: Request) {
       content: m.text,
     }));
 
+    // Haiku is the default — the quality/cost balance is right for a coach
+    // used many times a day. Override via COACH_MODEL env if you want Sonnet
+    // for premium tier or Opus for evals.
+    const model = process.env.COACH_MODEL || "claude-haiku-4-5-20251001";
     const response = await client.messages.create({
-      model: "claude-opus-4-7",
+      model,
       max_tokens: 600,
       system: [
         {
