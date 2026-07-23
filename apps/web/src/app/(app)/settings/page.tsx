@@ -16,6 +16,7 @@ import { Card, CardEyebrow, CardTitle, CardDescription } from "@/components/ui/c
 import { Button } from "@/components/ui/button";
 import { useUser, signOut } from "@/lib/supabase/use-user";
 import { fetchProfile } from "@/lib/supabase/profile";
+import { CoachStylePicker } from "@/components/settings/coach-style-picker";
 import {
   downloadExport,
   clearAllLocalData,
@@ -109,6 +110,9 @@ export default function SettingsPage() {
             </Link>
           </div>
         </Card>
+
+        {/* Coach voice */}
+        <CoachStylePicker />
 
         {/* Sound */}
         <SoundToggle />

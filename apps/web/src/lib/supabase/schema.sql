@@ -5,11 +5,12 @@
 -- Profiles
 -- =========================
 create table public.profiles (
-  id          uuid primary key references auth.users on delete cascade,
+  id           uuid primary key references auth.users on delete cascade,
   display_name text,
   intent       text,
   vision       text,
   focus_areas  text[] default '{}',
+  coach_style  text default 'calm_mentor', -- calm_mentor | grounded_strategist | fierce_accountability
   onboarded_at timestamptz,
   created_at   timestamptz default now()
 );
