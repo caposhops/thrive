@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Send, Cloud, HardDrive, Trash2, ChevronRight } from "lucide-react";
+import { Send, Cloud, HardDrive, Trash2, ChevronRight, WifiOff } from "lucide-react";
 import { useLocalStorage } from "@/lib/use-local-storage";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/lib/supabase/use-user";
@@ -18,6 +18,7 @@ import {
   resolveStyle,
   type CoachStyleKey,
 } from "@/lib/coach-styles";
+import { pickCoachWelcome } from "@/lib/coach-welcomes";
 
 type Message = {
   id: string;
@@ -25,13 +26,9 @@ type Message = {
   text: string;
 };
 
-const seed: Message[] = [
-  {
-    id: "1",
-    role: "coach",
-    text: "Welcome back. Before we talk about today — take one slow breath in for me. … And out. What's most alive in you right now?",
-  },
-];
+function makeSeed(): Message[] {
+  return [{ id: "seed", role: "coach", text: pickCoachWelcome() }];
+}
 
 const prompts = [
   "I keep procrastinating on something important.",
@@ -45,7 +42,7 @@ export default function CoachPage() {
   // localStorage is the always-on fallback for anonymous users + offline resilience
   const [localMessages, setLocalMessages] = useLocalStorage<Message[]>(
     "thrive:coach",
-    seed,
+    makeSeed(),
   );
   const [localStyle] = useLocalStorage<CoachStyleKey>(
     "thrive:coach:style",
@@ -55,6 +52,7 @@ export default function CoachPage() {
   const [cloudStyle, setCloudStyle] = useState<CoachStyleKey | null>(null);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
+  const [offline, setOffline] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [contextBlock, setContextBlock] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -90,10 +88,11 @@ export default function CoachPage() {
         role: r.role === "coach" ? ("coach" as const) : ("user" as const),
         text: r.content,
       }));
-      // If empty history (first sign-in), keep the seed welcome + save it
+      // If empty history (first sign-in), seed with a fresh welcome + save it
       if (hist.length === 0) {
-        setCloudMessages(seed);
-        void saveCoachMessage(user.id, "coach", seed[0].text);
+        const fresh = makeSeed();
+        setCloudMessages(fresh);
+        void saveCoachMessage(user.id, "coach", fresh[0].text);
       } else {
         setCloudMessages(hist);
       }
@@ -156,23 +155,26 @@ export default function CoachPage() {
           style: activeStyleKey,
         }),
       });
-      const data = (await res.json()) as { reply: string };
+      const data = (await res.json()) as { reply: string; source?: string };
+      setOffline(data.source === "offline");
       const coachMsg: Message = {
         id: crypto.randomUUID(),
         role: "coach",
         text: data.reply,
       };
       setMessages((m) => [...m, coachMsg]);
-      if (user) {
+      // Only persist real Claude replies — don't clutter history with error messages
+      if (user && data.source !== "offline") {
         void saveCoachMessage(user.id, "coach", data.reply);
       }
     } catch {
+      setOffline(true);
       setMessages((m) => [
         ...m,
         {
           id: crypto.randomUUID(),
           role: "coach",
-          text: "Something interrupted us. Try once more?",
+          text: "I can't reach my brain right now — the connection dropped. Try once more?",
         },
       ]);
     } finally {
@@ -181,12 +183,13 @@ export default function CoachPage() {
   };
 
   const doClear = async () => {
+    const fresh = makeSeed();
     if (isAuthed && user) {
       await clearCoachHistory(user.id);
-      setCloudMessages(seed);
-      await saveCoachMessage(user.id, "coach", seed[0].text);
+      setCloudMessages(fresh);
+      await saveCoachMessage(user.id, "coach", fresh[0].text);
     } else {
-      setLocalMessages(seed);
+      setLocalMessages(fresh);
     }
     setConfirmClear(false);
   };
@@ -222,6 +225,12 @@ export default function CoachPage() {
                   <HardDrive className="h-2.5 w-2.5" />
                   <span>Local · this device only</span>
                 </>
+              )}
+              {offline && (
+                <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-amber-300">
+                  <WifiOff className="h-2.5 w-2.5" />
+                  Offline
+                </span>
               )}
             </p>
           </div>

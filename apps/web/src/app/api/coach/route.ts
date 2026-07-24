@@ -11,20 +11,8 @@ type CoachRequest = {
   style?: string | null;
 };
 
-function fallbackReply(userText: string): string {
-  const lower = userText.toLowerCase();
-  if (lower.includes("procrastinat"))
-    return "Procrastination is rarely about laziness — it's usually fear wearing a costume. What's the smallest, almost absurd version of the thing you could do in the next two minutes?";
-  if (lower.includes("morning"))
-    return "Mornings are won the night before. What if we designed an evening landing strip instead — three things that make tomorrow's first hour feel safe?";
-  if (lower.includes("scatter") || lower.includes("foggy") || lower.includes("overwhelm"))
-    return "Scattered minds are full minds. Before we organize anything, let's empty. Name the three loudest things — even one word each.";
-  if (lower.includes("focus"))
-    return "Beautiful intention. Thirty days is enough to feel a real shift. What single identity shift would make the habits obvious?";
-  if (lower.includes("tired") || lower.includes("exhaust") || lower.includes("burn"))
-    return "Tired is information, not failure. What would it look like to honor the tiredness for the next hour, instead of pushing through it?";
-  return "Tell me more — what does that feel like in your body right now?";
-}
+const OFFLINE_REPLY =
+  "I can't reach my brain right now — the connection to Claude dropped. Give me a moment and try again.";
 
 export async function POST(req: Request) {
   let body: CoachRequest;
@@ -45,8 +33,9 @@ export async function POST(req: Request) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json({
-      reply: fallbackReply(lastUser.text),
-      source: "fallback",
+      reply: OFFLINE_REPLY,
+      source: "offline",
+      error: "missing_api_key",
     });
   }
 
@@ -87,8 +76,8 @@ export async function POST(req: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({
-      reply: fallbackReply(lastUser.text),
-      source: "fallback",
+      reply: OFFLINE_REPLY,
+      source: "offline",
       error: message,
     });
   }
