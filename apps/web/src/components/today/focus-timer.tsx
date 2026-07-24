@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Play, Pause, RotateCcw, X, Clock } from "lucide-react";
 import { Card, CardEyebrow } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useFocusTimer } from "@/lib/use-focus-timer";
 import { useUser } from "@/lib/supabase/use-user";
 import { fetchTodayFocusSeconds } from "@/lib/supabase/focus";
+import { CompletionFlash, useCompletionFlash } from "@/components/completion-flash";
 
 const PRESETS = [
   { label: "10 min", seconds: 10 * 60 },
@@ -36,6 +37,8 @@ export function FocusTimer() {
   const { state, start, pause, resume, stop } = useFocusTimer();
   const [selectedSeconds, setSelectedSeconds] = useState<number>(25 * 60);
   const [todaySeconds, setTodaySeconds] = useState<number>(0);
+  const { flash, trigger } = useCompletionFlash();
+  const prevStateRef = useRef(state.kind);
 
   // Refresh today's total: on mount, when timer completes (state → idle), and
   // whenever the user auth flips
@@ -55,6 +58,16 @@ export function FocusTimer() {
     // Deliberately depends on state.kind so we refresh once a session finishes
   }, [user, state.kind]);
 
+  // Fire the completion flash when the timer transitions from running/paused → idle
+  // (i.e., completed naturally or stopped early). The focus hook already handles
+  // chime + notification; this adds the affirmation moment.
+  useEffect(() => {
+    if (prevStateRef.current !== "idle" && state.kind === "idle") {
+      trigger("focus-done");
+    }
+    prevStateRef.current = state.kind;
+  }, [state.kind, trigger]);
+
   const active = state.kind !== "idle";
   const progress =
     state.kind !== "idle"
@@ -63,6 +76,7 @@ export function FocusTimer() {
 
   return (
     <Card className="relative overflow-hidden">
+      <CompletionFlash flash={flash} />
       <div className="absolute -left-16 -top-16 h-40 w-40 rounded-full bg-teal-400/20 blur-3xl" />
       <div className="flex items-start justify-between gap-3">
         <div>

@@ -23,6 +23,7 @@ import {
   unlogHabitToday,
   type HabitWithLogs,
 } from "@/lib/supabase/habits";
+import { CompletionFlash, useCompletionFlash } from "@/components/completion-flash";
 
 type LocalHabit = {
   id: string;
@@ -163,7 +164,10 @@ export default function HabitsPage() {
     ? (cloudHabits ?? []).map(fromCloud)
     : localHabits;
 
+  const { flash, trigger } = useCompletionFlash();
+
   const toggle = async (id: string) => {
+    const wasDone = habits.find((h) => h.id === id)?.doneToday ?? false;
     if (isAuthed && user) {
       // Optimistic update of cloud state
       setCloudHabits((prev) =>
@@ -192,6 +196,7 @@ export default function HabitsPage() {
         h.map((x) => (x.id === id ? { ...x, doneToday: !x.doneToday } : x)),
       );
     }
+    if (!wasDone) trigger("habit-done");
   };
 
   const addNewHabit = async () => {
@@ -233,6 +238,7 @@ export default function HabitsPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl">
+      <CompletionFlash flash={flash} />
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-fg-subtle">Habits</p>

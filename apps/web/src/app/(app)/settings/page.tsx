@@ -21,6 +21,7 @@ import {
   clearAllLocalData,
   countLocalEntries,
 } from "@/lib/thrive-data";
+import { SoundToggle } from "@/components/settings/sound-toggle";
 
 type CloudProfile = {
   display_name: string | null;
@@ -108,6 +109,9 @@ export default function SettingsPage() {
             </Link>
           </div>
         </Card>
+
+        {/* Sound */}
+        <SoundToggle />
 
         {/* Account */}
         <Card>

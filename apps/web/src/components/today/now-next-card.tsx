@@ -16,6 +16,7 @@ import {
   scheduleAll,
 } from "@/lib/plan-notifications";
 import { useFocusTimer } from "@/lib/use-focus-timer";
+import { CompletionFlash, useCompletionFlash } from "@/components/completion-flash";
 
 /**
  * "Now / Next" widget for the Today page. Shows the current planned block
@@ -25,6 +26,7 @@ export function NowNextCard() {
   const { blocks, loading, editBlock } = usePlanBlocks();
   const { state: focusState, start: startFocus } = useFocusTimer();
   const [tick, setTick] = useState(0);
+  const { flash, trigger } = useCompletionFlash();
 
   // Re-render every 30s so current/next stays accurate as time passes
   useEffect(() => {
@@ -71,6 +73,7 @@ export function NowNextCard() {
 
   return (
     <Card className="relative overflow-hidden">
+      <CompletionFlash flash={flash} />
       <div className="absolute -right-16 -top-16 h-40 w-40 rounded-full bg-violet-500/25 blur-3xl" />
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -118,11 +121,21 @@ export function NowNextCard() {
               </button>
             )}
             <button
-              onClick={() => editBlock(current.id, { done: !current.done })}
+              onClick={() => {
+                const wasDone = current.done;
+                editBlock(current.id, { done: !current.done });
+                if (!wasDone) {
+                  // Check if this completes the whole day
+                  const remaining = blocks.filter(
+                    (b) => !b.done && b.id !== current.id,
+                  ).length;
+                  trigger(remaining === 0 ? "day-complete" : "block-done");
+                }
+              }}
               className={cn(
                 "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 transition-all",
                 current.done
-                  ? "border-transparent bg-gradient-brand text-black shadow-glow"
+                  ? "border-transparent bg-gradient-brand text-black shadow-glow animate-bloom"
                   : "border-white/20 text-fg-subtle hover:border-white/40 hover:text-fg",
               )}
               aria-label={current.done ? "Mark not done" : "Mark done"}
