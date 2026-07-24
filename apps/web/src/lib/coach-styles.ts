@@ -12,7 +12,7 @@ export type CoachStyleKey =
   | "grounded_strategist"
   | "fierce_accountability";
 
-export const DEFAULT_STYLE: CoachStyleKey = "calm_mentor";
+export const DEFAULT_STYLE: CoachStyleKey = "grounded_strategist";
 
 export type CoachStyle = {
   key: CoachStyleKey;
