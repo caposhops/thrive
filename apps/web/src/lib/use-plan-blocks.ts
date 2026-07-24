@@ -1,15 +1,17 @@
 "use client";
 
 /**
- * usePlanBlocks — the single source of truth for today's plan blocks.
+ * usePlanBlocks — single source of truth for the plan blocks of a given date.
  * Dual-store: Supabase when signed in, localStorage otherwise.
  * Same API either way so the UI doesn't branch.
+ *
+ * Defaults to today's date; pass a `forDate` (YYYY-MM-DD) to plan any other day.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { useUser } from "./supabase/use-user";
 import {
-  fetchTodaysPlan,
+  fetchPlanForDate,
   createBlock as cloudCreate,
   updateBlock as cloudUpdate,
   deleteBlock as cloudDelete,
@@ -17,6 +19,7 @@ import {
 } from "./supabase/plan";
 import { materializeToday } from "./supabase/recurring";
 import { normalizeTime } from "./plan-time";
+import { todayISO } from "./streaks";
 
 export type PlanBlock = {
   id: string;
@@ -26,16 +29,14 @@ export type PlanBlock = {
   done: boolean;
 };
 
-function todayLocalKey(): string {
-  const d = new Date();
-  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  return `thrive:plan:${iso}`;
+function localKey(forDate: string): string {
+  return `thrive:plan:${forDate}`;
 }
 
-function readLocal(): PlanBlock[] {
+function readLocal(forDate: string): PlanBlock[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(todayLocalKey());
+    const raw = window.localStorage.getItem(localKey(forDate));
     if (!raw) return [];
     return JSON.parse(raw) as PlanBlock[];
   } catch {
@@ -43,9 +44,9 @@ function readLocal(): PlanBlock[] {
   }
 }
 
-function writeLocal(blocks: PlanBlock[]): void {
+function writeLocal(forDate: string, blocks: PlanBlock[]): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(todayLocalKey(), JSON.stringify(blocks));
+  window.localStorage.setItem(localKey(forDate), JSON.stringify(blocks));
 }
 
 function fromCloud(row: PlanBlockRow): PlanBlock {
@@ -62,28 +63,32 @@ function sortByTime(blocks: PlanBlock[]): PlanBlock[] {
   return [...blocks].sort((a, b) => a.start_time.localeCompare(b.start_time));
 }
 
-export function usePlanBlocks() {
+export function usePlanBlocks(forDate?: string) {
+  const effectiveDate = forDate ?? todayISO();
+  const isToday = effectiveDate === todayISO();
   const { user, loading: authLoading } = useUser();
   const [blocks, setBlocks] = useState<PlanBlock[]>([]);
   const [loading, setLoading] = useState(true);
 
   const isAuthed = !!user;
 
-  // Hydrate on mount and whenever auth state flips
   useEffect(() => {
     if (authLoading) return;
     let cancelled = false;
+    setLoading(true);
 
     (async () => {
       if (user) {
-        // Fill in today's blocks from the weekly template if this is the
-        // first visit today. No-op after the first call each day.
-        await materializeToday(user.id);
-        const rows = await fetchTodaysPlan(user.id);
+        // Only materialize today's recurring template. Future dates get
+        // filled in when they arrive.
+        if (isToday) {
+          await materializeToday(user.id);
+        }
+        const rows = await fetchPlanForDate(user.id, effectiveDate);
         if (cancelled) return;
         setBlocks(sortByTime(rows.map(fromCloud)));
       } else {
-        setBlocks(sortByTime(readLocal()));
+        setBlocks(sortByTime(readLocal(effectiveDate)));
       }
       if (!cancelled) setLoading(false);
     })();
@@ -91,7 +96,7 @@ export function usePlanBlocks() {
     return () => {
       cancelled = true;
     };
-  }, [user, authLoading]);
+  }, [user, authLoading, effectiveDate, isToday]);
 
   const addBlock = useCallback(
     async (block: {
@@ -106,6 +111,7 @@ export function usePlanBlocks() {
           start_time: normalized.start_time,
           title: normalized.title,
           duration_minutes: durationMinutes,
+          for_date: effectiveDate,
         });
         if (row) {
           setBlocks((prev) => sortByTime([...prev, fromCloud(row)]));
@@ -120,12 +126,12 @@ export function usePlanBlocks() {
         };
         setBlocks((prev) => {
           const next = sortByTime([...prev, nb]);
-          writeLocal(next);
+          writeLocal(effectiveDate, next);
           return next;
         });
       }
     },
-    [isAuthed, user],
+    [isAuthed, user, effectiveDate],
   );
 
   const updateLocalBlock = useCallback(
@@ -134,11 +140,11 @@ export function usePlanBlocks() {
         const next = sortByTime(
           prev.map((b) => (b.id === id ? { ...b, ...patch } : b)),
         );
-        if (!isAuthed) writeLocal(next);
+        if (!isAuthed) writeLocal(effectiveDate, next);
         return next;
       });
     },
-    [isAuthed],
+    [isAuthed, effectiveDate],
   );
 
   const editBlock = useCallback(
@@ -163,15 +169,24 @@ export function usePlanBlocks() {
     async (id: string) => {
       setBlocks((prev) => {
         const next = prev.filter((b) => b.id !== id);
-        if (!isAuthed) writeLocal(next);
+        if (!isAuthed) writeLocal(effectiveDate, next);
         return next;
       });
       if (isAuthed) {
         await cloudDelete(id);
       }
     },
-    [isAuthed],
+    [isAuthed, effectiveDate],
   );
 
-  return { blocks, loading, addBlock, editBlock, removeBlock, isAuthed };
+  return {
+    blocks,
+    loading,
+    addBlock,
+    editBlock,
+    removeBlock,
+    isAuthed,
+    forDate: effectiveDate,
+    isToday,
+  };
 }

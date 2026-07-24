@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import {
   Plus,
   Trash2,
@@ -15,7 +16,7 @@ import {
 } from "lucide-react";
 import { Card, CardEyebrow, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { cn, today } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { usePlanBlocks } from "@/lib/use-plan-blocks";
 import { formatTime12 } from "@/lib/plan-time";
 import {
@@ -27,6 +28,8 @@ import { WeeklyRhythm } from "@/components/plan/weekly-rhythm";
 import { CompletionFlash, useCompletionFlash } from "@/components/completion-flash";
 import { DurationPicker } from "@/components/plan/duration-picker";
 import type { DurationMinutes } from "@/lib/plan-duration";
+import { PlanDatePicker } from "@/components/plan/date-picker";
+import { todayISO } from "@/lib/streaks";
 
 type Suggestion = { start_time: string; title: string };
 
@@ -41,8 +44,23 @@ const suggestions: Suggestion[] = [
 ];
 
 export default function PlanPage() {
+  return (
+    <Suspense fallback={<div className="mx-auto w-full max-w-3xl"><Card className="animate-pulse-glow py-12 text-center text-fg-subtle">Loading…</Card></div>}>
+      <PlanPageInner />
+    </Suspense>
+  );
+}
+
+function PlanPageInner() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const urlDate = searchParams.get("date");
+  const selectedDate = isValidISODate(urlDate) ? (urlDate as string) : todayISO();
+  const isToday = selectedDate === todayISO();
+
   const { blocks, loading, addBlock, editBlock, removeBlock, isAuthed } =
-    usePlanBlocks();
+    usePlanBlocks(selectedDate);
   const [permission, setPermission] = useState<
     NotificationPermission | "unsupported"
   >("default");
@@ -51,17 +69,31 @@ export default function PlanPage() {
   const { flash, trigger } = useCompletionFlash();
   const [draftDuration, setDraftDuration] = useState<DurationMinutes>(null);
 
+  const setSelectedDate = (next: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === todayISO()) {
+      params.delete("date");
+    } else {
+      params.set("date", next);
+    }
+    const q = params.toString();
+    router.replace(q ? `${pathname}?${q}` : pathname);
+  };
+
   useEffect(() => {
     setPermission(permissionState());
   }, []);
 
   useEffect(() => {
+    // Only schedule notifications for today's plan. Tomorrow's nudges will
+    // schedule themselves when tomorrow becomes today.
+    if (!isToday) return;
     scheduleAll(
       blocks
         .filter((b) => !b.done)
         .map((b) => ({ id: b.id, start_time: b.start_time, title: b.title })),
     );
-  }, [blocks]);
+  }, [blocks, isToday]);
 
   const askForPermission = async () => {
     const next = await requestPermission();
@@ -117,10 +149,12 @@ export default function PlanPage() {
       <header className="mb-8">
         <p className="text-xs uppercase tracking-[0.2em] text-fg-subtle">Design your rhythm</p>
         <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight sm:text-5xl">
-          Shape today, gently.
+          {isToday
+            ? "Shape today, gently."
+            : `Shape ${headlineLabel(selectedDate)}.`}
         </h1>
         <p className="mt-3 text-fg-muted">
-          {today()} · pick 3&ndash;5 moments. Rough times, not rigid slots.
+          {formatSelectedDate(selectedDate)} · pick 3&ndash;5 moments. Rough times, not rigid slots.
         </p>
         <p className="mt-2 flex items-center gap-1.5 text-[11px] tracking-wide text-fg-subtle">
           {isAuthed ? (
@@ -136,7 +170,8 @@ export default function PlanPage() {
             </>
           )}
         </p>
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <PlanDatePicker value={selectedDate} onChange={setSelectedDate} />
           <Link
             href="/week"
             className="glass inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs text-fg-muted transition-colors hover:bg-white/[0.06] hover:text-fg"
@@ -148,8 +183,8 @@ export default function PlanPage() {
         </div>
       </header>
 
-      {/* Notifications banner */}
-      {permission === "default" && blocks.length > 0 && (
+      {/* Notifications banner — only for today's plan */}
+      {isToday && permission === "default" && blocks.length > 0 && (
         <Card className="mb-6 flex flex-col gap-3 bg-gradient-glow sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-medium text-fg">Gentle nudges at every transition?</p>
@@ -163,7 +198,7 @@ export default function PlanPage() {
           </Button>
         </Card>
       )}
-      {permission === "denied" && (
+      {isToday && permission === "denied" && (
         <Card className="mb-6 flex items-center gap-3 text-xs text-fg-muted">
           <BellOff className="h-4 w-4 shrink-0" />
           Notifications are blocked in this browser. You can enable them in Site Settings.
@@ -390,4 +425,38 @@ function defaultNextTime(blocks: { start_time: string }[]): string {
   const [hh, mm] = last.split(":").map(Number);
   const nextHour = Math.min(23, (hh || 0) + 1);
   return `${String(nextHour).padStart(2, "0")}:${String(mm || 0).padStart(2, "0")}`;
+}
+
+function isValidISODate(v: string | null): boolean {
+  if (!v) return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const [y, m, d] = v.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  return (
+    dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d
+  );
+}
+
+function formatSelectedDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function headlineLabel(iso: string): string {
+  const today = todayISO();
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const [ty, tm, td] = today.split("-").map(Number);
+  const todayDt = new Date(ty, tm - 1, td);
+  const diffDays = Math.round(
+    (dt.getTime() - todayDt.getTime()) / (1000 * 60 * 60 * 24),
+  );
+  if (diffDays === -1) return "yesterday, gently";
+  if (diffDays === 1) return "tomorrow, gently";
+  return `${dt.toLocaleDateString(undefined, { weekday: "long" })}, gently`;
 }

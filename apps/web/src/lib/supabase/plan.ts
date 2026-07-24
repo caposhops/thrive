@@ -27,12 +27,19 @@ const SELECT_COLS =
   "id, for_date, start_time, duration_minutes, title, notes, done, position, created_at";
 
 export async function fetchTodaysPlan(userId: string): Promise<PlanBlockRow[]> {
+  return fetchPlanForDate(userId, todayISO());
+}
+
+export async function fetchPlanForDate(
+  userId: string,
+  forDate: string,
+): Promise<PlanBlockRow[]> {
   const supabase = getBrowserClient();
   const { data, error } = await supabase
     .from("plan_blocks")
     .select(SELECT_COLS)
     .eq("user_id", userId)
-    .eq("for_date", todayISO())
+    .eq("for_date", forDate)
     .order("start_time", { ascending: true });
   if (error || !data) return [];
   return data as PlanBlockRow[];
@@ -46,6 +53,7 @@ export async function createBlock(
     notes?: string;
     position?: number;
     duration_minutes?: number | null;
+    for_date?: string;
   },
 ) {
   const supabase = getBrowserClient();
@@ -53,7 +61,7 @@ export async function createBlock(
     .from("plan_blocks")
     .insert({
       user_id: userId,
-      for_date: todayISO(),
+      for_date: block.for_date ?? todayISO(),
       start_time: block.start_time,
       duration_minutes: block.duration_minutes ?? null,
       title: block.title,
