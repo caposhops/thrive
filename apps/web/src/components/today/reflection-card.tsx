@@ -1,19 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Moon, Check } from "lucide-react";
-import { Card, CardEyebrow, CardTitle, CardDescription } from "@/components/ui/card";
+import { useEffect, useMemo, useState } from "react";
+import { Sunrise, Sun, Moon, Stars, Check, ChevronDown, ChevronRight } from "lucide-react";
+import { Card, CardEyebrow, CardDescription } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useLocalStorage } from "@/lib/use-local-storage";
 import { useUser } from "@/lib/supabase/use-user";
-import { fetchTodayReflection, upsertReflection } from "@/lib/supabase/plan";
+import {
+  fetchTodayReflection,
+  upsertReflection,
+  fetchRecentReflections,
+  type DayReflectionRow,
+} from "@/lib/supabase/plan";
+import { pickPromptForNow, timeOfDay } from "@/lib/reflection-prompts";
 
 /**
- * End-of-day reflection prompt. Appears from 6pm onward.
- * 30 seconds. No wrong answers. Not shameful.
+ * Daily reflection. Always available. Rotating prompt by time-of-day.
+ * Autosaves. Recent entries expandable below.
  */
-
-const AFTER_HOUR = 18; // 6pm
 
 const feelings: { emoji: string; label: string; value: 1 | 2 | 3 | 4 | 5 }[] = [
   { emoji: "🌧️", label: "Hard", value: 1 },
@@ -27,9 +31,17 @@ const localKey = () => `thrive:reflection:${new Date().toISOString().slice(0, 10
 
 type LocalReflection = { text: string; mood: number | null; savedAt: string };
 
+function IconForWindow({ window }: { window: ReturnType<typeof timeOfDay> }) {
+  const cls = "mr-1 inline-block h-3 w-3";
+  if (window === "morning") return <Sunrise className={cls} />;
+  if (window === "midday") return <Sun className={cls} />;
+  if (window === "evening") return <Moon className={cls} />;
+  return <Stars className={cls} />;
+}
+
 export function ReflectionCard() {
   const { user } = useUser();
-  const [hour, setHour] = useState<number | null>(null);
+  const [now, setNow] = useState<Date | null>(null);
   const [local, setLocal] = useLocalStorage<LocalReflection>(localKey(), {
     text: "",
     mood: null,
@@ -38,18 +50,25 @@ export function ReflectionCard() {
   const [cloudLoaded, setCloudLoaded] = useState(!user);
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [history, setHistory] = useState<DayReflectionRow[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    setHour(new Date().getHours());
-    const id = window.setInterval(() => setHour(new Date().getHours()), 60_000);
+    setNow(new Date());
+    const id = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(id);
   }, []);
 
-  // Hydrate from cloud when signed in
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setCloudLoaded(true);
+      setHistory([]);
+      return;
+    }
     let cancelled = false;
-    fetchTodayReflection(user.id).then((row) => {
+    (async () => {
+      const row = await fetchTodayReflection(user.id);
       if (cancelled) return;
       if (row) {
         setLocal({
@@ -58,15 +77,20 @@ export function ReflectionCard() {
           savedAt: row.updated_at,
         });
       }
+      const recent = await fetchRecentReflections(user.id, 8);
+      if (cancelled) return;
+      const today = new Date().toISOString().slice(0, 10);
+      setHistory(recent.filter((r) => r.for_date !== today));
       setCloudLoaded(true);
-    });
+    })();
     return () => {
       cancelled = true;
     };
   }, [user, setLocal]);
 
-  if (hour === null || hour < AFTER_HOUR) return null;
-  if (!cloudLoaded) return null;
+  const promptInfo = useMemo(() => pickPromptForNow(now ?? new Date()), [now]);
+
+  if (!cloudLoaded || !now) return null;
 
   const save = async (patch: Partial<LocalReflection>) => {
     const next = { ...local, ...patch, savedAt: new Date().toISOString() };
@@ -83,16 +107,27 @@ export function ReflectionCard() {
     window.setTimeout(() => setSavedFlash(false), 1500);
   };
 
+  const toggleExpand = (id: string) => {
+    setExpanded((prev) => {
+      const nextSet = new Set(prev);
+      if (nextSet.has(id)) nextSet.delete(id);
+      else nextSet.add(id);
+      return nextSet;
+    });
+  };
+
   return (
     <Card className="relative overflow-hidden">
       <div className="absolute -bottom-16 -left-16 h-40 w-40 rounded-full bg-indigo-500/25 blur-3xl" />
       <div className="flex items-start justify-between gap-3">
         <div>
           <CardEyebrow>
-            <Moon className="mr-1 inline-block h-3 w-3" />
-            Evening reflection
+            <IconForWindow window={promptInfo.window} />
+            {promptInfo.label}
           </CardEyebrow>
-          <CardTitle className="mt-1">How was the shape of today?</CardTitle>
+          <p className="mt-1 font-display text-xl font-semibold leading-tight tracking-tight text-fg sm:text-2xl">
+            {promptInfo.prompt}
+          </p>
           <CardDescription className="mt-1">
             Thirty seconds. No wrong answers. Just notice.
           </CardDescription>
@@ -143,13 +178,92 @@ export function ReflectionCard() {
         value={local.text}
         onChange={(e) => setLocal({ ...local, text: e.target.value })}
         onBlur={() => save({ text: local.text })}
-        placeholder="What flowed? What slipped? What surprised you?"
+        placeholder="Type freely — Thrive keeps it safe."
         rows={3}
         className="mt-5 w-full resize-none rounded-2xl bg-white/[0.03] p-4 text-[15px] leading-relaxed text-fg outline-none ring-1 ring-inset ring-white/[0.06] focus:ring-white/15"
       />
       {saving && (
         <p className="mt-2 text-[10px] text-fg-subtle">Saving to your account…</p>
       )}
+
+      {history.length > 0 && (
+        <div className="mt-6 border-t border-white/[0.06] pt-4">
+          <button
+            onClick={() => setHistoryOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 rounded-xl px-1 py-1 text-left text-xs font-medium text-fg-muted transition-colors hover:text-fg"
+            aria-expanded={historyOpen}
+          >
+            <span>
+              Recent reflections{" "}
+              <span className="text-fg-subtle">({history.length})</span>
+            </span>
+            {historyOpen ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
+          </button>
+
+          {historyOpen && (
+            <ul className="mt-3 flex flex-col gap-2">
+              {history.map((r) => {
+                const isExpanded = expanded.has(r.id);
+                const text = r.reflection ?? "";
+                const mood = feelings.find((f) => f.value === r.mood_after);
+                return (
+                  <li key={r.id}>
+                    <button
+                      onClick={() => toggleExpand(r.id)}
+                      className="w-full rounded-xl bg-white/[0.02] p-3 text-left transition-colors hover:bg-white/[0.04]"
+                    >
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-fg-subtle">
+                        <span className="font-medium text-fg-muted">
+                          {formatDayLabel(r.for_date)}
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          {mood && <span title={mood.label}>{mood.emoji}</span>}
+                          {isExpanded ? (
+                            <ChevronDown className="h-3 w-3" />
+                          ) : (
+                            <ChevronRight className="h-3 w-3" />
+                          )}
+                        </span>
+                      </div>
+                      <p
+                        className={cn(
+                          "mt-1.5 text-[13px] leading-snug text-fg",
+                          !isExpanded && "line-clamp-2",
+                        )}
+                      >
+                        {text}
+                      </p>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
     </Card>
   );
+}
+
+function formatDayLabel(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  const today = new Date();
+  const yest = new Date();
+  yest.setDate(today.getDate() - 1);
+  if (date.toDateString() === yest.toDateString()) return "Yesterday";
+  const diffDays = Math.round(
+    (today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24),
+  );
+  if (diffDays < 7) {
+    return date.toLocaleDateString(undefined, { weekday: "long" });
+  }
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 }
