@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, Cloud, HardDrive, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Send, Cloud, HardDrive, Trash2, ChevronRight } from "lucide-react";
 import { useLocalStorage } from "@/lib/use-local-storage";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/lib/supabase/use-user";
@@ -11,6 +12,12 @@ import {
   clearCoachHistory,
 } from "@/lib/supabase/coach";
 import { fetchCoachContext, renderCoachContext } from "@/lib/coach-context";
+import { fetchCoachStyle } from "@/lib/supabase/profile";
+import {
+  DEFAULT_STYLE,
+  resolveStyle,
+  type CoachStyleKey,
+} from "@/lib/coach-styles";
 
 type Message = {
   id: string;
@@ -40,7 +47,12 @@ export default function CoachPage() {
     "thrive:coach",
     seed,
   );
+  const [localStyle] = useLocalStorage<CoachStyleKey>(
+    "thrive:coach:style",
+    DEFAULT_STYLE,
+  );
   const [cloudMessages, setCloudMessages] = useState<Message[] | null>(null);
+  const [cloudStyle, setCloudStyle] = useState<CoachStyleKey | null>(null);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -49,23 +61,30 @@ export default function CoachPage() {
 
   const isAuthed = !!user;
   const messages: Message[] = isAuthed ? (cloudMessages ?? []) : localMessages;
+  const activeStyleKey: CoachStyleKey = isAuthed
+    ? (cloudStyle ?? DEFAULT_STYLE)
+    : localStyle;
+  const activeStyle = resolveStyle(activeStyleKey);
 
-  // Hydrate from cloud on sign-in
+  // Hydrate history + style from cloud on sign-in
   useEffect(() => {
     if (authLoading) return;
     if (!user) {
       setCloudMessages(null);
       setContextBlock(null);
+      setCloudStyle(null);
       return;
     }
     let cancelled = false;
     (async () => {
-      const [rows, ctx] = await Promise.all([
+      const [rows, ctx, style] = await Promise.all([
         fetchCoachHistory(user.id),
         fetchCoachContext(user.id),
+        fetchCoachStyle(user.id),
       ]);
       if (cancelled) return;
       setContextBlock(renderCoachContext(ctx));
+      setCloudStyle((style as CoachStyleKey | null) ?? DEFAULT_STYLE);
       const hist = rows.map((r) => ({
         id: r.id,
         role: r.role === "coach" ? ("coach" as const) : ("user" as const),
@@ -134,6 +153,7 @@ export default function CoachPage() {
         body: JSON.stringify({
           messages: next.map(({ role, text }) => ({ role, text })),
           context: contextBlock,
+          style: activeStyleKey,
         }),
       });
       const data = (await res.json()) as { reply: string };
@@ -175,18 +195,27 @@ export default function CoachPage() {
     <div className="mx-auto flex h-[calc(100dvh-14rem)] w-full max-w-3xl flex-col sm:h-[calc(100vh-8rem)]">
       <header className="mb-6 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-brand shadow-glow">
-            <Sparkles className="h-5 w-5 text-black" />
+          <div
+            className={cn(
+              "flex h-11 w-11 items-center justify-center rounded-2xl shadow-glow bg-gradient-to-br",
+              activeStyle.gradient,
+            )}
+          >
+            <span className="text-xl leading-none" aria-hidden>
+              {activeStyle.emoji}
+            </span>
           </div>
           <div>
             <p className="text-xs uppercase tracking-[0.2em] text-fg-subtle">Coach</p>
-            <h1 className="font-display text-2xl font-semibold tracking-tight">A calm mentor</h1>
+            <h1 className="font-display text-2xl font-semibold tracking-tight">
+              {activeStyle.name}
+            </h1>
             <p className="mt-1 flex items-center gap-1.5 text-[10px] tracking-wide text-fg-subtle">
               {isAuthed ? (
                 <>
                   <Cloud className="h-2.5 w-2.5 text-teal-300" />
                   <span className="text-teal-300">Synced</span>
-                  <span>· conversation lives on your account</span>
+                  <span>· lives on your account</span>
                 </>
               ) : (
                 <>
@@ -197,16 +226,26 @@ export default function CoachPage() {
             </p>
           </div>
         </div>
-        {messages.length > 1 && (
-          <button
-            onClick={() => setConfirmClear(true)}
-            className="glass shrink-0 rounded-full p-2 text-fg-subtle transition-colors hover:text-fg"
-            aria-label="Clear conversation"
-            title="Clear conversation"
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Link
+            href="/settings#coach"
+            className="glass inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] text-fg-muted transition-colors hover:bg-white/[0.08] hover:text-fg"
+            title="Change coach voice"
           >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        )}
+            Voice
+            <ChevronRight className="h-3 w-3" />
+          </Link>
+          {messages.length > 1 && (
+            <button
+              onClick={() => setConfirmClear(true)}
+              className="glass rounded-full p-2 text-fg-subtle transition-colors hover:text-fg"
+              aria-label="Clear conversation"
+              title="Clear conversation"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </header>
 
       {confirmClear && (
