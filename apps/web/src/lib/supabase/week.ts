@@ -16,27 +16,16 @@ export type WeekDay = {
 export type WeekDirection = "past" | "next";
 
 /**
- * Fetch per-day signals for a 7-day window.
- *  - "past" (default): last 7 days including today
- *  - "next": today + next 6 days
- * Returns oldest-first so the UI can render left-to-right / top-to-bottom.
+ * Fetch per-day signals across an inclusive date range.
+ * Returns one WeekDay entry per calendar day in [startISO, endISO], oldest first.
+ * Used by /week (7-day windows) and the month calendar.
  */
-export async function fetchWeek(
+export async function fetchDateRange(
   userId: string,
-  direction: WeekDirection = "past",
+  startISO: string,
+  endISO: string,
 ): Promise<WeekDay[]> {
   const supabase = getBrowserClient();
-
-  const today = new Date();
-  const startDate = new Date(today);
-  const endDate = new Date(today);
-  if (direction === "past") {
-    startDate.setDate(startDate.getDate() - 6);
-  } else {
-    endDate.setDate(endDate.getDate() + 6);
-  }
-  const startISO = isoDay(startDate);
-  const endISO = isoDay(endDate);
   const startOfDayISO = `${startISO}T00:00:00.000Z`;
 
   const [blocksRes, moodsRes, reflectionsRes] = await Promise.all([
@@ -94,18 +83,14 @@ export async function fetchWeek(
     });
   }
 
-  // Assemble the 7-day window, oldest first.
-  // past  → 6 days ago .. today   (i from 6..0)
-  // next  → today .. 6 days ahead (i from 0..6)
+  // Walk the range one day at a time
   const days: WeekDay[] = [];
-  const offsets =
-    direction === "past"
-      ? [-6, -5, -4, -3, -2, -1, 0]
-      : [0, 1, 2, 3, 4, 5, 6];
-  for (const offset of offsets) {
-    const d = new Date(today);
-    d.setDate(d.getDate() + offset);
-    const key = isoDay(d);
+  const [sy, sm, sd] = startISO.split("-").map(Number);
+  const [ey, em, ed] = endISO.split("-").map(Number);
+  const cursor = new Date(sy, sm - 1, sd);
+  const end = new Date(ey, em - 1, ed);
+  while (cursor <= end) {
+    const key = isoDay(cursor);
     const refl = reflectionsByDay.get(key);
     days.push({
       date: key,
@@ -114,6 +99,47 @@ export async function fetchWeek(
       reflection: refl?.text ?? null,
       reflectionMood: refl?.mood ?? null,
     });
+    cursor.setDate(cursor.getDate() + 1);
   }
   return days;
+}
+
+/**
+ * Fetch per-day signals for a 7-day window centered on today.
+ *  - "past" (default): last 7 days including today
+ *  - "next": today + next 6 days
+ */
+export async function fetchWeek(
+  userId: string,
+  direction: WeekDirection = "past",
+): Promise<WeekDay[]> {
+  const today = new Date();
+  const startDate = new Date(today);
+  const endDate = new Date(today);
+  if (direction === "past") {
+    startDate.setDate(startDate.getDate() - 6);
+  } else {
+    endDate.setDate(endDate.getDate() + 6);
+  }
+  return fetchDateRange(userId, isoDay(startDate), isoDay(endDate));
+}
+
+/**
+ * Return the ISO date range that fills a Monday-first calendar grid for the
+ * given month. Includes trailing days from the previous month and leading days
+ * from the next month so a 6×7 grid always renders.
+ */
+export function monthGridRange(
+  year: number,
+  monthIndex0: number,
+): { startISO: string; endISO: string } {
+  // JS getDay: 0 = Sunday .. 6 = Saturday. We want Monday-first columns.
+  const firstOfMonth = new Date(year, monthIndex0, 1);
+  const jsDay = firstOfMonth.getDay(); // 0..6
+  const daysBackToMonday = (jsDay + 6) % 7; // 0 if Monday, 6 if Sunday
+  const gridStart = new Date(firstOfMonth);
+  gridStart.setDate(gridStart.getDate() - daysBackToMonday);
+  const gridEnd = new Date(gridStart);
+  gridEnd.setDate(gridEnd.getDate() + 41); // 6 rows × 7 cols - 1
+  return { startISO: isoDay(gridStart), endISO: isoDay(gridEnd) };
 }
