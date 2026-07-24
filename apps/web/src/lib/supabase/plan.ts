@@ -97,3 +97,21 @@ export async function upsertReflection(
     { onConflict: "user_id,for_date" },
   );
 }
+
+export async function fetchRecentReflections(
+  userId: string,
+  limit = 7,
+): Promise<DayReflectionRow[]> {
+  const supabase = getBrowserClient();
+  const { data, error } = await supabase
+    .from("day_reflections")
+    .select("id, for_date, reflection, mood_after, updated_at")
+    .eq("user_id", userId)
+    .not("reflection", "is", null)
+    .order("for_date", { ascending: false })
+    .limit(limit);
+  if (error || !data) return [];
+  return (data as DayReflectionRow[]).filter(
+    (r) => (r.reflection ?? "").trim().length > 0,
+  );
+}
