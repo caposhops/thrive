@@ -13,37 +13,52 @@ export type WeekDay = {
   reflectionMood: MoodValue | null;
 };
 
+export type WeekDirection = "past" | "next";
+
 /**
- * Fetch all the per-day signals for a rolling 7-day window ending today.
+ * Fetch per-day signals for a 7-day window.
+ *  - "past" (default): last 7 days including today
+ *  - "next": today + next 6 days
  * Returns oldest-first so the UI can render left-to-right / top-to-bottom.
  */
-export async function fetchWeek(userId: string): Promise<WeekDay[]> {
+export async function fetchWeek(
+  userId: string,
+  direction: WeekDirection = "past",
+): Promise<WeekDay[]> {
   const supabase = getBrowserClient();
 
   const today = new Date();
-  const sevenDaysAgo = new Date(today);
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-  const sinceISO = isoDay(sevenDaysAgo);
-  const sinceStartOfDay = `${sinceISO}T00:00:00.000Z`;
+  const startDate = new Date(today);
+  const endDate = new Date(today);
+  if (direction === "past") {
+    startDate.setDate(startDate.getDate() - 6);
+  } else {
+    endDate.setDate(endDate.getDate() + 6);
+  }
+  const startISO = isoDay(startDate);
+  const endISO = isoDay(endDate);
+  const startOfDayISO = `${startISO}T00:00:00.000Z`;
 
   const [blocksRes, moodsRes, reflectionsRes] = await Promise.all([
     supabase
       .from("plan_blocks")
       .select("id, for_date, start_time, title, done")
       .eq("user_id", userId)
-      .gte("for_date", sinceISO)
+      .gte("for_date", startISO)
+      .lte("for_date", endISO)
       .order("start_time", { ascending: true }),
     supabase
       .from("mood_checkins")
       .select("value, created_at")
       .eq("user_id", userId)
-      .gte("created_at", sinceStartOfDay)
+      .gte("created_at", startOfDayISO)
       .order("created_at", { ascending: false }),
     supabase
       .from("day_reflections")
       .select("for_date, reflection, mood_after")
       .eq("user_id", userId)
-      .gte("for_date", sinceISO),
+      .gte("for_date", startISO)
+      .lte("for_date", endISO),
   ]);
 
   const blocksByDay = new Map<string, WeekDay["blocks"]>();
@@ -79,11 +94,17 @@ export async function fetchWeek(userId: string): Promise<WeekDay[]> {
     });
   }
 
-  // Assemble the 7-day rolling window, oldest first
+  // Assemble the 7-day window, oldest first.
+  // past  → 6 days ago .. today   (i from 6..0)
+  // next  → today .. 6 days ahead (i from 0..6)
   const days: WeekDay[] = [];
-  for (let i = 6; i >= 0; i--) {
+  const offsets =
+    direction === "past"
+      ? [-6, -5, -4, -3, -2, -1, 0]
+      : [0, 1, 2, 3, 4, 5, 6];
+  for (const offset of offsets) {
     const d = new Date(today);
-    d.setDate(d.getDate() - i);
+    d.setDate(d.getDate() + offset);
     const key = isoDay(d);
     const refl = reflectionsByDay.get(key);
     days.push({

@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { isoDay } from "@/lib/streaks";
 import { formatTime12 } from "@/lib/plan-time";
 import { useUser } from "@/lib/supabase/use-user";
-import { fetchWeek, type WeekDay } from "@/lib/supabase/week";
+import { fetchWeek, type WeekDay, type WeekDirection } from "@/lib/supabase/week";
 
 const moodEmoji: Record<number, string> = {
   1: "🌧️",
@@ -24,6 +24,7 @@ const dayShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export default function WeekPage() {
   const { user, loading: authLoading } = useUser();
   const [days, setDays] = useState<WeekDay[] | null>(null);
+  const [direction, setDirection] = useState<WeekDirection>("past");
 
   useEffect(() => {
     if (!user) {
@@ -31,13 +32,14 @@ export default function WeekPage() {
       return;
     }
     let cancelled = false;
-    fetchWeek(user.id).then((w) => {
+    setDays(null);
+    fetchWeek(user.id, direction).then((w) => {
       if (!cancelled) setDays(w);
     });
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, direction]);
 
   const stats = useMemo(() => {
     if (!days) return null;
@@ -100,22 +102,64 @@ export default function WeekPage() {
     <div className="mx-auto w-full max-w-6xl">
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-fg-subtle">This week</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-fg-subtle">
+            {direction === "past" ? "This week" : "The week ahead"}
+          </p>
           <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight sm:text-5xl">
-            The shape of your <span className="text-gradient-calm">last seven days</span>.
+            {direction === "past" ? (
+              <>
+                The shape of your{" "}
+                <span className="text-gradient-calm">last seven days</span>.
+              </>
+            ) : (
+              <>
+                What&apos;s coming in your{" "}
+                <span className="text-gradient-calm">next seven days</span>.
+              </>
+            )}
           </h1>
           <p className="mt-2 flex items-center gap-1.5 text-[11px] tracking-wide text-teal-300">
             <Cloud className="h-3 w-3" />
             <span>Synced</span>
-            <span className="text-fg-subtle">· rolling window ending today</span>
+            <span className="text-fg-subtle">
+              · {direction === "past" ? "rolling window ending today" : "today + next 6 days"}
+            </span>
           </p>
         </div>
-        <Link href="/plan">
-          <Button size="sm" variant="secondary">
-            <Waypoints className="h-4 w-4" />
-            Edit today
-          </Button>
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="glass flex items-center rounded-full p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setDirection("past")}
+              className={cn(
+                "rounded-full px-3 py-1.5 font-medium transition-all",
+                direction === "past"
+                  ? "bg-gradient-brand text-black shadow-glow"
+                  : "text-fg-muted hover:text-fg",
+              )}
+            >
+              Past 7
+            </button>
+            <button
+              type="button"
+              onClick={() => setDirection("next")}
+              className={cn(
+                "rounded-full px-3 py-1.5 font-medium transition-all",
+                direction === "next"
+                  ? "bg-gradient-brand text-black shadow-glow"
+                  : "text-fg-muted hover:text-fg",
+              )}
+            >
+              Next 7
+            </button>
+          </div>
+          <Link href="/plan">
+            <Button size="sm" variant="secondary">
+              <Waypoints className="h-4 w-4" />
+              Edit today
+            </Button>
+          </Link>
+        </div>
       </header>
 
       {/* Summary stats */}
@@ -182,20 +226,25 @@ function StatCard({
 
 function DayCard({ day }: { day: WeekDay }) {
   const dateObj = new Date(day.date + "T12:00:00");
-  const isToday = day.date === isoDay(new Date());
+  const today = isoDay(new Date());
+  const isToday = day.date === today;
+  const isFuture = day.date > today;
   const dayName = dayShort[dateObj.getDay()];
   const dayNum = dateObj.getDate();
   const completedCount = day.blocks.filter((b) => b.done).length;
   const totalCount = day.blocks.length;
+  const planHref = isToday ? "/plan" : `/plan?date=${day.date}`;
 
   return (
-    <div
+    <Link
+      href={planHref}
       className={cn(
-        "flex flex-col gap-3 rounded-3xl p-4 transition-all",
+        "flex flex-col gap-3 rounded-3xl p-4 transition-all hover:ring-1 hover:ring-white/15",
         isToday
           ? "bg-gradient-glow ring-1 ring-white/15 shadow-glow"
           : "glass",
       )}
+      title={isFuture ? `Plan ${dateObj.toLocaleDateString(undefined, { weekday: "long" })}` : undefined}
     >
       <div className="flex items-start justify-between">
         <div>
@@ -280,6 +329,6 @@ function DayCard({ day }: { day: WeekDay }) {
           &ldquo;{day.reflection}&rdquo;
         </p>
       )}
-    </div>
+    </Link>
   );
 }
