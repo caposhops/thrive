@@ -5,6 +5,7 @@ import { COACH_SYSTEM_PROMPT } from "@/lib/coach-prompt";
 export const runtime = "nodejs";
 
 type ChatMessage = { role: "user" | "coach"; text: string };
+type CoachRequest = { messages: ChatMessage[]; context?: string | null };
 
 function fallbackReply(userText: string): string {
   const lower = userText.toLowerCase();
@@ -22,7 +23,7 @@ function fallbackReply(userText: string): string {
 }
 
 export async function POST(req: Request) {
-  let body: { messages: ChatMessage[] };
+  let body: CoachRequest;
   try {
     body = await req.json();
   } catch {
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
   }
 
   const messages = body.messages ?? [];
+  const contextBlock = body.context?.trim() || null;
   const lastUser = [...messages].reverse().find((m) => m.role === "user");
   if (!lastUser) {
     return NextResponse.json({ error: "No user message" }, { status: 400 });
@@ -54,16 +56,28 @@ export async function POST(req: Request) {
     // used many times a day. Override via COACH_MODEL env if you want Sonnet
     // for premium tier or Opus for evals.
     const model = process.env.COACH_MODEL || "claude-haiku-4-5-20251001";
+
+    // System prompt: cached persona + (uncached) per-user snapshot when present.
+    // The persona is stable across all requests → prompt caching gives 90% off.
+    // The context snapshot is dynamic per user + per day → not cache-friendly.
+    const systemBlocks: Anthropic.Messages.TextBlockParam[] = [
+      {
+        type: "text",
+        text: COACH_SYSTEM_PROMPT,
+        cache_control: { type: "ephemeral" },
+      },
+    ];
+    if (contextBlock) {
+      systemBlocks.push({
+        type: "text",
+        text: contextBlock,
+      });
+    }
+
     const response = await client.messages.create({
       model,
       max_tokens: 600,
-      system: [
-        {
-          type: "text",
-          text: COACH_SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral" },
-        },
-      ],
+      system: systemBlocks,
       messages: apiMessages,
     });
 

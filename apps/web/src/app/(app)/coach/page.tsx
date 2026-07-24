@@ -10,6 +10,7 @@ import {
   saveCoachMessage,
   clearCoachHistory,
 } from "@/lib/supabase/coach";
+import { fetchCoachContext, renderCoachContext } from "@/lib/coach-context";
 
 type Message = {
   id: string;
@@ -43,6 +44,7 @@ export default function CoachPage() {
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [contextBlock, setContextBlock] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const isAuthed = !!user;
@@ -53,12 +55,17 @@ export default function CoachPage() {
     if (authLoading) return;
     if (!user) {
       setCloudMessages(null);
+      setContextBlock(null);
       return;
     }
     let cancelled = false;
     (async () => {
-      const rows = await fetchCoachHistory(user.id);
+      const [rows, ctx] = await Promise.all([
+        fetchCoachHistory(user.id),
+        fetchCoachContext(user.id),
+      ]);
       if (cancelled) return;
+      setContextBlock(renderCoachContext(ctx));
       const hist = rows.map((r) => ({
         id: r.id,
         role: r.role === "coach" ? ("coach" as const) : ("user" as const),
@@ -76,6 +83,18 @@ export default function CoachPage() {
       cancelled = true;
     };
   }, [user, authLoading]);
+
+  // Refresh context each time the user opens the input (before sending).
+  // Snapshot is a moving target — mood/blocks/priorities change through the day.
+  const refreshContext = async () => {
+    if (!user) return;
+    try {
+      const ctx = await fetchCoachContext(user.id);
+      setContextBlock(renderCoachContext(ctx));
+    } catch {
+      /* keep last-known context */
+    }
+  };
 
   // Auto-scroll to newest
   useEffect(() => {
@@ -104,6 +123,8 @@ export default function CoachPage() {
     // Fire-and-forget cloud save for user's message
     if (user) {
       void saveCoachMessage(user.id, "user", text);
+      // Refresh context in the background — snapshot is dynamic through the day
+      void refreshContext();
     }
 
     try {
@@ -112,6 +133,7 @@ export default function CoachPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: next.map(({ role, text }) => ({ role, text })),
+          context: contextBlock,
         }),
       });
       const data = (await res.json()) as { reply: string };
