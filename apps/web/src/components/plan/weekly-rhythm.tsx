@@ -16,6 +16,9 @@ import {
   type RecurringBlockRow,
 } from "@/lib/supabase/recurring";
 
+// Labels indexed by JS getDay() (0 = Sunday..6 = Saturday), kept in that shape
+// because it matches the DB's day_of_week column. The visual render order is
+// controlled by DISPLAY_ORDER — Monday-first.
 const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const dayLabelsLong = [
   "Sunday",
@@ -26,6 +29,7 @@ const dayLabelsLong = [
   "Friday",
   "Saturday",
 ];
+const DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon .. Sun
 
 type CurrentBlock = {
   start_time: string;
@@ -160,9 +164,10 @@ export function WeeklyRhythm({
 
       {expanded && (
         <div className="mt-6 space-y-5">
-          {/* Day-of-week tabs */}
+          {/* Day-of-week tabs (Monday-first) */}
           <div className="flex flex-wrap gap-1.5">
-            {dayLabels.map((label, i) => {
+            {DISPLAY_ORDER.map((i) => {
+              const label = dayLabels[i];
               const active = selectedDay === i;
               const count = (rows ?? []).filter((r) => r.day_of_week === i).length;
               return (
@@ -265,15 +270,18 @@ export function WeeklyRhythm({
                 Save today&apos;s rhythm as recurring
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {dayLabels.map((label, i) => (
-                  <button
-                    key={`copy-${label}`}
-                    onClick={() => copyTodayInto(i)}
-                    className="rounded-full bg-white/[0.05] px-3 py-1 text-xs text-fg-muted transition-colors hover:bg-white/[0.1] hover:text-fg"
-                  >
-                    → {label}
-                  </button>
-                ))}
+                {DISPLAY_ORDER.map((i) => {
+                  const label = dayLabels[i];
+                  return (
+                    <button
+                      key={`copy-${label}`}
+                      onClick={() => copyTodayInto(i)}
+                      className="rounded-full bg-white/[0.05] px-3 py-1 text-xs text-fg-muted transition-colors hover:bg-white/[0.1] hover:text-fg"
+                    >
+                      → {label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

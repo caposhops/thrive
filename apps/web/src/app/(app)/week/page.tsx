@@ -9,7 +9,16 @@ import { cn } from "@/lib/utils";
 import { isoDay } from "@/lib/streaks";
 import { formatTime12 } from "@/lib/plan-time";
 import { useUser } from "@/lib/supabase/use-user";
-import { fetchWeek, type WeekDay, type WeekDirection } from "@/lib/supabase/week";
+import {
+  fetchDateRange,
+  fetchWeek,
+  monthGridRange,
+  type WeekDay,
+  type WeekDirection,
+} from "@/lib/supabase/week";
+import { MonthCalendar } from "@/components/week/month-calendar";
+
+type ViewMode = "past" | "next" | "month";
 
 const moodEmoji: Record<number, string> = {
   1: "🌧️",
@@ -24,7 +33,14 @@ const dayShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export default function WeekPage() {
   const { user, loading: authLoading } = useUser();
   const [days, setDays] = useState<WeekDay[] | null>(null);
-  const [direction, setDirection] = useState<WeekDirection>("past");
+  const [mode, setMode] = useState<ViewMode>("past");
+
+  // Month mode owns its own visible month, defaulting to the current one
+  const now = new Date();
+  const [monthCursor, setMonthCursor] = useState<{ year: number; month: number }>({
+    year: now.getFullYear(),
+    month: now.getMonth(),
+  });
 
   useEffect(() => {
     if (!user) {
@@ -33,25 +49,57 @@ export default function WeekPage() {
     }
     let cancelled = false;
     setDays(null);
-    fetchWeek(user.id, direction).then((w) => {
+    const fetcher =
+      mode === "month"
+        ? (() => {
+            const { startISO, endISO } = monthGridRange(
+              monthCursor.year,
+              monthCursor.month,
+            );
+            return fetchDateRange(user.id, startISO, endISO);
+          })()
+        : fetchWeek(user.id, mode as WeekDirection);
+    fetcher.then((w) => {
       if (!cancelled) setDays(w);
     });
     return () => {
       cancelled = true;
     };
-  }, [user, direction]);
+  }, [user, mode, monthCursor.year, monthCursor.month]);
 
   const stats = useMemo(() => {
     if (!days) return null;
-    const activeDays = days.filter((d) => d.blocks.length > 0).length;
-    const totalBlocks = days.reduce((sum, d) => sum + d.blocks.length, 0);
-    const completedBlocks = days.reduce(
+    // For month mode, only count days that fall in the visible month
+    const inScope =
+      mode === "month"
+        ? days.filter((d) => {
+            const [y, m] = d.date.split("-").map(Number);
+            return y === monthCursor.year && m - 1 === monthCursor.month;
+          })
+        : days;
+    const activeDays = inScope.filter((d) => d.blocks.length > 0).length;
+    const totalBlocks = inScope.reduce((sum, d) => sum + d.blocks.length, 0);
+    const completedBlocks = inScope.reduce(
       (sum, d) => sum + d.blocks.filter((b) => b.done).length,
       0,
     );
-    const moodDays = days.filter((d) => d.mood !== null).length;
-    return { activeDays, totalBlocks, completedBlocks, moodDays };
-  }, [days]);
+    const moodDays = inScope.filter((d) => d.mood !== null).length;
+    const denominator = inScope.length;
+    return { activeDays, totalBlocks, completedBlocks, moodDays, denominator };
+  }, [days, mode, monthCursor.year, monthCursor.month]);
+
+  const goPrevMonth = () =>
+    setMonthCursor(({ year, month }) => {
+      if (month === 0) return { year: year - 1, month: 11 };
+      return { year, month: month - 1 };
+    });
+  const goNextMonth = () =>
+    setMonthCursor(({ year, month }) => {
+      if (month === 11) return { year: year + 1, month: 0 };
+      return { year, month: month + 1 };
+    });
+  const goThisMonth = () =>
+    setMonthCursor({ year: now.getFullYear(), month: now.getMonth() });
 
   if (authLoading) {
     return (
@@ -103,18 +151,27 @@ export default function WeekPage() {
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-fg-subtle">
-            {direction === "past" ? "This week" : "The week ahead"}
+            {mode === "past"
+              ? "This week"
+              : mode === "next"
+                ? "The week ahead"
+                : "This month"}
           </p>
           <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight sm:text-5xl">
-            {direction === "past" ? (
+            {mode === "past" ? (
               <>
                 The shape of your{" "}
                 <span className="text-gradient-calm">last seven days</span>.
               </>
-            ) : (
+            ) : mode === "next" ? (
               <>
                 What&apos;s coming in your{" "}
                 <span className="text-gradient-calm">next seven days</span>.
+              </>
+            ) : (
+              <>
+                Zoom out to the{" "}
+                <span className="text-gradient-calm">whole month</span>.
               </>
             )}
           </h1>
@@ -122,36 +179,26 @@ export default function WeekPage() {
             <Cloud className="h-3 w-3" />
             <span>Synced</span>
             <span className="text-fg-subtle">
-              · {direction === "past" ? "rolling window ending today" : "today + next 6 days"}
+              ·{" "}
+              {mode === "past"
+                ? "rolling window ending today"
+                : mode === "next"
+                  ? "today + next 6 days"
+                  : "tap any day to plan it"}
             </span>
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="glass flex items-center rounded-full p-0.5 text-xs">
-            <button
-              type="button"
-              onClick={() => setDirection("past")}
-              className={cn(
-                "rounded-full px-3 py-1.5 font-medium transition-all",
-                direction === "past"
-                  ? "bg-gradient-brand text-black shadow-glow"
-                  : "text-fg-muted hover:text-fg",
-              )}
-            >
+            <ModeButton active={mode === "past"} onClick={() => setMode("past")}>
               Past 7
-            </button>
-            <button
-              type="button"
-              onClick={() => setDirection("next")}
-              className={cn(
-                "rounded-full px-3 py-1.5 font-medium transition-all",
-                direction === "next"
-                  ? "bg-gradient-brand text-black shadow-glow"
-                  : "text-fg-muted hover:text-fg",
-              )}
-            >
+            </ModeButton>
+            <ModeButton active={mode === "next"} onClick={() => setMode("next")}>
               Next 7
-            </button>
+            </ModeButton>
+            <ModeButton active={mode === "month"} onClick={() => setMode("month")}>
+              Month
+            </ModeButton>
           </div>
           <Link href="/plan">
             <Button size="sm" variant="secondary">
@@ -165,13 +212,21 @@ export default function WeekPage() {
       {/* Summary stats */}
       {stats && (
         <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label="Days active" value={stats.activeDays} suffix="/ 7" />
+          <StatCard
+            label="Days active"
+            value={stats.activeDays}
+            suffix={`/ ${stats.denominator}`}
+          />
           <StatCard
             label="Blocks planned"
             value={stats.totalBlocks}
             suffix={stats.totalBlocks > 0 ? `· ${stats.completedBlocks} done` : ""}
           />
-          <StatCard label="Mood check-ins" value={stats.moodDays} suffix="/ 7" />
+          <StatCard
+            label="Mood check-ins"
+            value={stats.moodDays}
+            suffix={`/ ${stats.denominator}`}
+          />
           <StatCard
             label="Completion"
             value={
@@ -184,11 +239,20 @@ export default function WeekPage() {
         </div>
       )}
 
-      {/* Day grid */}
+      {/* Body — week grid OR month calendar */}
       {days === null ? (
         <Card className="animate-pulse-glow py-16 text-center text-fg-subtle">
-          Reading the week…
+          Reading…
         </Card>
+      ) : mode === "month" ? (
+        <MonthCalendar
+          days={days}
+          visibleYear={monthCursor.year}
+          visibleMonth={monthCursor.month}
+          onPrev={goPrevMonth}
+          onNext={goNextMonth}
+          onToday={goThisMonth}
+        />
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-7">
           {days.map((d) => (
@@ -197,6 +261,31 @@ export default function WeekPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function ModeButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-full px-3 py-1.5 font-medium transition-all",
+        active
+          ? "bg-gradient-brand text-black shadow-glow"
+          : "text-fg-muted hover:text-fg",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
