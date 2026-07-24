@@ -17,6 +17,7 @@
 import { getBrowserClient } from "./supabase/client";
 import { todayISO } from "./streaks";
 import { formatTime12, normalizeTime } from "./plan-time";
+import { formatDurationShort } from "./plan-duration";
 
 export type CoachContext = {
   profile?: {
@@ -27,7 +28,12 @@ export type CoachContext = {
   today: {
     date: string;
     mood?: { value: number; label: string };
-    blocks: Array<{ time: string; title: string; done: boolean }>;
+    blocks: Array<{
+      time: string;
+      duration_minutes: number | null;
+      title: string;
+      done: boolean;
+    }>;
     priorities: Array<{ text: string; done: boolean }>;
   };
   recent_reflection?: {
@@ -66,7 +72,7 @@ export async function fetchCoachContext(userId: string): Promise<CoachContext> {
         .maybeSingle(),
       supabase
         .from("plan_blocks")
-        .select("start_time, title, done")
+        .select("start_time, duration_minutes, title, done")
         .eq("user_id", userId)
         .eq("for_date", today)
         .order("start_time", { ascending: true }),
@@ -91,6 +97,7 @@ export async function fetchCoachContext(userId: string): Promise<CoachContext> {
       date: today,
       blocks: (blocksRes.data ?? []).map((b) => ({
         time: normalizeTime(b.start_time as string),
+        duration_minutes: (b.duration_minutes as number | null) ?? null,
         title: b.title as string,
         done: !!b.done,
       })),
@@ -155,7 +162,10 @@ export function renderCoachContext(ctx: CoachContext): string {
     const done = ctx.today.blocks.filter((b) => b.done).length;
     lines.push(`- Today's plan (${done}/${ctx.today.blocks.length} done):`);
     for (const b of ctx.today.blocks) {
-      lines.push(`    ${b.done ? "✓" : "○"} ${formatTime12(b.time)} — ${b.title}`);
+      const dur = b.duration_minutes
+        ? ` · ${formatDurationShort(b.duration_minutes)}`
+        : "";
+      lines.push(`    ${b.done ? "✓" : "○"} ${formatTime12(b.time)}${dur} — ${b.title}`);
     }
   }
 

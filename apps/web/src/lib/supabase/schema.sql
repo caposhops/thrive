@@ -139,15 +139,16 @@ create policy "self all" on public.balance_ratings for all using (auth.uid() = u
 -- Daily rhythm — the "ritual rhythm" planner
 -- =========================
 create table public.plan_blocks (
-  id         uuid primary key default gen_random_uuid(),
-  user_id    uuid not null references public.profiles(id) on delete cascade,
-  for_date   date not null default current_date,
-  start_time time not null,             -- rough target time, e.g. '09:00'
-  title      text not null,
-  notes      text,
-  done       boolean default false,
-  position   smallint default 0,
-  created_at timestamptz default now()
+  id               uuid primary key default gen_random_uuid(),
+  user_id          uuid not null references public.profiles(id) on delete cascade,
+  for_date         date not null default current_date,
+  start_time       time not null,             -- rough target time, e.g. '09:00'
+  duration_minutes integer,                    -- optional; null = "runs until next block"
+  title            text not null,
+  notes            text,
+  done             boolean default false,
+  position         smallint default 0,
+  created_at       timestamptz default now()
 );
 create index on public.plan_blocks (user_id, for_date, start_time);
 alter table public.plan_blocks enable row level security;
@@ -170,13 +171,14 @@ create policy "self all" on public.day_reflections for all using (auth.uid() = u
 -- Weekly rhythm — recurring blocks per day of week
 -- =========================
 create table public.recurring_blocks (
-  id          uuid primary key default gen_random_uuid(),
-  user_id     uuid not null references public.profiles(id) on delete cascade,
-  day_of_week smallint not null check (day_of_week between 0 and 6),  -- 0 = Sunday
-  start_time  time not null,
-  title       text not null,
-  active      boolean default true,
-  created_at  timestamptz default now()
+  id               uuid primary key default gen_random_uuid(),
+  user_id          uuid not null references public.profiles(id) on delete cascade,
+  day_of_week      smallint not null check (day_of_week between 0 and 6),  -- 0 = Sunday
+  start_time       time not null,
+  duration_minutes integer,                    -- carries through to plan_blocks on materialize
+  title            text not null,
+  active           boolean default true,
+  created_at       timestamptz default now()
 );
 create index on public.recurring_blocks (user_id, day_of_week);
 alter table public.recurring_blocks enable row level security;

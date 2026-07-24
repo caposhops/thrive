@@ -8,9 +8,12 @@ export type RecurringBlockRow = {
   id: string;
   day_of_week: number; // 0 = Sunday, 6 = Saturday
   start_time: string;
+  duration_minutes: number | null;
   title: string;
   active: boolean;
 };
+
+const RECURRING_SELECT = "id, day_of_week, start_time, duration_minutes, title, active";
 
 export async function fetchAllRecurring(
   userId: string,
@@ -18,7 +21,7 @@ export async function fetchAllRecurring(
   const supabase = getBrowserClient();
   const { data, error } = await supabase
     .from("recurring_blocks")
-    .select("id, day_of_week, start_time, title, active")
+    .select(RECURRING_SELECT)
     .eq("user_id", userId)
     .eq("active", true)
     .order("day_of_week", { ascending: true })
@@ -32,7 +35,12 @@ export async function fetchAllRecurring(
 
 export async function createRecurring(
   userId: string,
-  block: { day_of_week: number; start_time: string; title: string },
+  block: {
+    day_of_week: number;
+    start_time: string;
+    title: string;
+    duration_minutes?: number | null;
+  },
 ) {
   const supabase = getBrowserClient();
   const { data, error } = await supabase
@@ -41,9 +49,10 @@ export async function createRecurring(
       user_id: userId,
       day_of_week: block.day_of_week,
       start_time: normalizeTime(block.start_time),
+      duration_minutes: block.duration_minutes ?? null,
       title: block.title,
     })
-    .select("id, day_of_week, start_time, title, active")
+    .select(RECURRING_SELECT)
     .single();
   return { row: (data as RecurringBlockRow | null) ?? null, error };
 }
@@ -56,16 +65,14 @@ export async function deleteRecurring(id: string) {
 /**
  * If today has not yet been materialized AND the user has recurring blocks
  * for today's day_of_week AND today has no plan_blocks yet — insert them and
- * mark the day as materialized.
+ * mark the day as materialized. Duration flows through.
  *
- * Idempotent: safe to call on every page load. First call may do work, later
- * calls short-circuit.
+ * Idempotent: safe to call on every page load.
  */
 export async function materializeToday(userId: string): Promise<boolean> {
   const supabase = getBrowserClient();
   const forDate = todayISO();
 
-  // 1. Check the materialized marker — cheap early-out
   const { data: existing } = await supabase
     .from("materialized_days")
     .select("for_date")
@@ -74,9 +81,6 @@ export async function materializeToday(userId: string): Promise<boolean> {
     .maybeSingle();
   if (existing) return false;
 
-  // 2. Also short-circuit if today already has any plan_blocks (user built
-  //    manually before we materialized) — respect their work, just mark today
-  //    as done.
   const { data: existingBlocks } = await supabase
     .from("plan_blocks")
     .select("id")
@@ -88,22 +92,21 @@ export async function materializeToday(userId: string): Promise<boolean> {
     return false;
   }
 
-  // 3. Look up today's recurring blocks
-  const dow = new Date().getDay(); // 0..6
+  const dow = new Date().getDay();
   const { data: recurring } = await supabase
     .from("recurring_blocks")
-    .select("start_time, title")
+    .select("start_time, duration_minutes, title")
     .eq("user_id", userId)
     .eq("day_of_week", dow)
     .eq("active", true)
     .order("start_time", { ascending: true });
 
-  // 4. If any, insert them into plan_blocks
   if (recurring && recurring.length > 0) {
     const rows = recurring.map((r, i) => ({
       user_id: userId,
       for_date: forDate,
       start_time: normalizeTime(r.start_time as string),
+      duration_minutes: (r.duration_minutes as number | null) ?? null,
       title: r.title as string,
       position: i,
     }));
@@ -111,7 +114,6 @@ export async function materializeToday(userId: string): Promise<boolean> {
     if (insertError) return false;
   }
 
-  // 5. Mark today as materialized so we don't repeat
   await supabase.from("materialized_days").insert({ user_id: userId, for_date: forDate });
   return true;
 }

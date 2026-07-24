@@ -25,6 +25,8 @@ import {
 } from "@/lib/plan-notifications";
 import { WeeklyRhythm } from "@/components/plan/weekly-rhythm";
 import { CompletionFlash, useCompletionFlash } from "@/components/completion-flash";
+import { DurationPicker } from "@/components/plan/duration-picker";
+import type { DurationMinutes } from "@/lib/plan-duration";
 
 type Suggestion = { start_time: string; title: string };
 
@@ -47,6 +49,7 @@ export default function PlanPage() {
   const [draftTime, setDraftTime] = useState(defaultNextTime(blocks));
   const [draftTitle, setDraftTitle] = useState("");
   const { flash, trigger } = useCompletionFlash();
+  const [draftDuration, setDraftDuration] = useState<DurationMinutes>(null);
 
   useEffect(() => {
     setPermission(permissionState());
@@ -76,9 +79,25 @@ export default function PlanPage() {
     e?.preventDefault();
     const title = draftTitle.trim();
     if (!title) return;
-    await addBlock({ start_time: draftTime, title });
+    await addBlock({
+      start_time: draftTime,
+      title,
+      duration_minutes: draftDuration,
+    });
     setDraftTitle("");
-    setDraftTime(defaultNextTime([...blocks, { id: "", start_time: draftTime, title, done: false }]));
+    setDraftDuration(null);
+    setDraftTime(
+      defaultNextTime([
+        ...blocks,
+        {
+          id: "",
+          start_time: draftTime,
+          title,
+          done: false,
+          duration_minutes: draftDuration,
+        },
+      ]),
+    );
   };
 
   const addSuggestion = async (s: Suggestion) => {
@@ -170,6 +189,9 @@ export default function PlanPage() {
                 block={block}
                 onTitleChange={(title) => editBlock(block.id, { title })}
                 onTimeChange={(start_time) => editBlock(block.id, { start_time })}
+                onDurationChange={(duration_minutes) =>
+                  editBlock(block.id, { duration_minutes })
+                }
                 onToggleDone={() => {
                   const wasDone = block.done;
                   editBlock(block.id, { done: !block.done });
@@ -190,12 +212,12 @@ export default function PlanPage() {
       {/* Add new */}
       <Card className="mb-6">
         <CardEyebrow>Add a block</CardEyebrow>
-        <form onSubmit={addFromDraft} className="mt-3 flex flex-col gap-3 sm:flex-row">
+        <form onSubmit={addFromDraft} className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <input
             type="time"
             value={draftTime}
             onChange={(e) => setDraftTime(e.target.value)}
-            className="h-12 w-full rounded-2xl bg-white/[0.04] px-4 text-[15px] text-fg outline-none ring-1 ring-inset ring-white/[0.06] focus:ring-white/15 sm:w-32"
+            className="h-11 w-full rounded-2xl bg-white/[0.04] px-4 text-[15px] text-fg outline-none ring-1 ring-inset ring-white/[0.06] focus:ring-white/15 sm:h-12 sm:w-32"
             aria-label="Block time"
           />
           <input
@@ -203,8 +225,14 @@ export default function PlanPage() {
             value={draftTitle}
             onChange={(e) => setDraftTitle(e.target.value)}
             placeholder="What's the intent?"
-            className="h-12 flex-1 rounded-2xl bg-white/[0.04] px-5 text-[15px] text-fg outline-none ring-1 ring-inset ring-white/[0.06] focus:ring-white/15"
+            className="h-11 flex-1 rounded-2xl bg-white/[0.04] px-5 text-[15px] text-fg outline-none ring-1 ring-inset ring-white/[0.06] focus:ring-white/15 sm:h-12"
             aria-label="Block title"
+          />
+          <DurationPicker
+            value={draftDuration}
+            onChange={setDraftDuration}
+            variant="input"
+            className="sm:h-12"
           />
           <Button type="submit" disabled={!draftTitle.trim()}>
             <Plus className="h-4 w-4" />
@@ -243,6 +271,7 @@ export default function PlanPage() {
           todaysBlocks={blocks.map((b) => ({
             start_time: b.start_time,
             title: b.title,
+            duration_minutes: b.duration_minutes,
           }))}
         />
       </div>
@@ -263,12 +292,20 @@ function BlockRow({
   block,
   onTitleChange,
   onTimeChange,
+  onDurationChange,
   onToggleDone,
   onDelete,
 }: {
-  block: { id: string; start_time: string; title: string; done: boolean };
+  block: {
+    id: string;
+    start_time: string;
+    title: string;
+    done: boolean;
+    duration_minutes: DurationMinutes;
+  };
   onTitleChange: (title: string) => void;
   onTimeChange: (time: string) => void;
+  onDurationChange: (duration: DurationMinutes) => void;
   onToggleDone: () => void;
   onDelete: () => void;
 }) {
@@ -317,6 +354,11 @@ function BlockRow({
           block.done && "line-through decoration-white/20",
         )}
         aria-label="Block title"
+      />
+      <DurationPicker
+        value={block.duration_minutes}
+        onChange={onDurationChange}
+        variant="pill"
       />
       <button
         onClick={onToggleDone}

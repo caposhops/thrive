@@ -6,6 +6,8 @@ import { Card, CardEyebrow, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatTime12 } from "@/lib/plan-time";
+import { formatDurationShort, type DurationMinutes } from "@/lib/plan-duration";
+import { DurationPicker } from "@/components/plan/duration-picker";
 import { useUser } from "@/lib/supabase/use-user";
 import {
   fetchAllRecurring,
@@ -25,7 +27,11 @@ const dayLabelsLong = [
   "Saturday",
 ];
 
-type CurrentBlock = { start_time: string; title: string };
+type CurrentBlock = {
+  start_time: string;
+  title: string;
+  duration_minutes: DurationMinutes;
+};
 
 export function WeeklyRhythm({
   todaysBlocks,
@@ -38,6 +44,7 @@ export function WeeklyRhythm({
   const [rows, setRows] = useState<RecurringBlockRow[] | null>(null);
   const [draftTime, setDraftTime] = useState("09:00");
   const [draftTitle, setDraftTitle] = useState("");
+  const [draftDuration, setDraftDuration] = useState<DurationMinutes>(null);
 
   useEffect(() => {
     if (!user || !expanded) return;
@@ -63,10 +70,12 @@ export function WeeklyRhythm({
       day_of_week: selectedDay,
       start_time: draftTime,
       title,
+      duration_minutes: draftDuration,
     });
     if (row) {
       setRows((prev) => [...(prev ?? []), row]);
       setDraftTitle("");
+      setDraftDuration(null);
     }
   };
 
@@ -92,6 +101,7 @@ export function WeeklyRhythm({
           day_of_week: targetDay,
           start_time: b.start_time,
           title: b.title,
+          duration_minutes: b.duration_minutes,
         }),
       ),
     );
@@ -192,6 +202,11 @@ export function WeeklyRhythm({
                     {formatTime12(r.start_time)}
                   </span>
                   <span className="flex-1 text-[15px] text-fg">{r.title}</span>
+                  {r.duration_minutes != null && (
+                    <span className="shrink-0 rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] text-fg-muted">
+                      {formatDurationShort(r.duration_minutes)}
+                    </span>
+                  )}
                   <button
                     onClick={() => remove(r.id)}
                     className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-fg-subtle transition-all hover:bg-rose-500/20 hover:text-rose-300 focus:bg-rose-500/20 focus:text-rose-300 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
@@ -214,7 +229,7 @@ export function WeeklyRhythm({
               e.preventDefault();
               addDraft();
             }}
-            className="flex flex-col gap-2 sm:flex-row"
+            className="flex flex-col gap-2 sm:flex-row sm:flex-wrap"
           >
             <input
               type="time"
@@ -230,6 +245,11 @@ export function WeeklyRhythm({
               placeholder={`Every ${dayLabelsLong[selectedDay]}…`}
               className="h-11 flex-1 rounded-2xl bg-white/[0.04] px-4 text-[15px] text-fg outline-none ring-1 ring-inset ring-white/[0.06] focus:ring-white/15"
               aria-label="Recurring block title"
+            />
+            <DurationPicker
+              value={draftDuration}
+              onChange={setDraftDuration}
+              variant="input"
             />
             <Button type="submit" size="sm" disabled={!draftTitle.trim()}>
               <Plus className="h-4 w-4" />
