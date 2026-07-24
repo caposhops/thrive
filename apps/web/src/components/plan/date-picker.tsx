@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isoDay, todayISO } from "@/lib/streaks";
@@ -41,8 +40,6 @@ export function PlanDatePicker({ value, onChange }: Props) {
   const today = todayISO();
   const yesterday = shiftDate(today, -1);
   const tomorrow = shiftDate(today, 1);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const dateInputRef = useRef<HTMLInputElement>(null);
 
   const options = [
     { key: yesterday, label: "Yesterday" },
@@ -50,12 +47,7 @@ export function PlanDatePicker({ value, onChange }: Props) {
     { key: tomorrow, label: "Tomorrow" },
   ];
 
-  // Value that's not one of the three quick options — show it as a custom pill
   const isCustom = !options.some((o) => o.key === value);
-
-  useEffect(() => {
-    if (pickerOpen) dateInputRef.current?.showPicker?.();
-  }, [pickerOpen]);
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -76,39 +68,42 @@ export function PlanDatePicker({ value, onChange }: Props) {
       ))}
 
       {isCustom && (
-        <button
-          type="button"
-          onClick={() => setPickerOpen(true)}
-          className="rounded-full bg-gradient-brand px-3 py-1.5 text-xs font-medium text-black shadow-glow"
-        >
+        <span className="rounded-full bg-gradient-brand px-3 py-1.5 text-xs font-medium text-black shadow-glow">
           {labelForDate(value)}
-        </button>
+        </span>
       )}
 
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setPickerOpen(true)}
-          className="glass inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs text-fg-muted transition-all hover:bg-white/[0.08] hover:text-fg"
-          aria-label="Pick any date"
-        >
-          <CalendarDays className="h-3.5 w-3.5" />
-          Pick date
-        </button>
+      {/* Native date input wrapped in a label so tapping the pill anywhere opens
+          the OS date picker on every browser we support (Chrome/FF/Edge/Safari
+          desktop + iOS Safari + Android). No showPicker() needed. */}
+      <label className="glass relative inline-flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-xs text-fg-muted transition-all hover:bg-white/[0.08] hover:text-fg">
+        <CalendarDays className="h-3.5 w-3.5" />
+        Pick date
         <input
-          ref={dateInputRef}
           type="date"
           value={value}
           onChange={(e) => {
             const next = e.target.value;
             if (next) onChange(next);
-            setPickerOpen(false);
           }}
-          className="absolute inset-0 opacity-0"
-          tabIndex={-1}
-          aria-hidden
+          onClick={(e) => {
+            // Modern browsers open the picker when the input receives the click
+            // (from the label). This showPicker() is belt-and-suspenders for
+            // browsers where the default click doesn't open it.
+            const el = e.currentTarget as HTMLInputElement & {
+              showPicker?: () => void;
+            };
+            try {
+              el.showPicker?.();
+            } catch {
+              // showPicker throws in some contexts (non-secure origin, etc.)
+              // Silent — the label-driven default already handles most cases.
+            }
+          }}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          aria-label="Pick any date"
         />
-      </div>
+      </label>
     </div>
   );
 }
