@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Check } from "lucide-react";
+import { Plus, Check, Sparkles } from "lucide-react";
 import { useLocalStorage } from "@/lib/use-local-storage";
 import { Card, CardEyebrow, CardTitle, CardDescription } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,7 @@ import {
   type PriorityRow,
 } from "@/lib/supabase/priorities";
 import { CompletionFlash, useCompletionFlash } from "@/components/completion-flash";
+import { useVisionStore } from "@/lib/vision-store";
 
 type Task = { id: string; text: string; done: boolean };
 
@@ -37,6 +38,7 @@ export function PriorityList() {
   const [draft, setDraft] = useState("");
   const isAuthed = !!user;
   const { flash, trigger } = useCompletionFlash();
+  const { getLinkForPriority, setActionDone } = useVisionStore();
 
   useEffect(() => {
     if (!user) {
@@ -79,7 +81,17 @@ export function PriorityList() {
         t.map((x) => (x.id === id ? { ...x, done: !x.done } : x)),
       );
     }
-    if (!wasDone) trigger("priority-done"); // only celebrate on unchecked → done
+    if (!wasDone) {
+      // Vision-linked priorities get a specific line back to the vision.
+      // Everything else gets the default "priority-done" affirmation pool.
+      const link = getLinkForPriority(id);
+      if (link) {
+        setActionDone(link.actionId, true);
+        trigger({ text: `This moved you toward ${link.visionTitle}.` });
+      } else {
+        trigger("priority-done");
+      }
+    }
   };
 
   const add = async (e: React.FormEvent) => {
@@ -117,37 +129,53 @@ export function PriorityList() {
       <CardDescription className="mt-1">Three things. Not more. Honor the ceiling.</CardDescription>
 
       <ul className="mt-6 flex flex-col gap-2">
-        {tasks.map((task) => (
-          <li key={task.id}>
-            <button
-              onClick={() => toggle(task.id)}
-              className={cn(
-                "group flex w-full items-center gap-3 rounded-2xl p-3 text-left transition-all",
-                "hover:bg-white/[0.04]",
-              )}
-              aria-pressed={task.done}
-            >
-              <span
+        {tasks.map((task) => {
+          const link = getLinkForPriority(task.id);
+          return (
+            <li key={task.id}>
+              <button
+                onClick={() => toggle(task.id)}
                 className={cn(
-                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-all",
-                  task.done
-                    ? "border-transparent bg-gradient-brand"
-                    : "border-white/20 group-hover:border-white/40",
+                  "group flex w-full items-center gap-3 rounded-2xl p-3 text-left transition-all",
+                  "hover:bg-white/[0.04]",
                 )}
+                aria-pressed={task.done}
               >
-                {task.done && <Check className="h-3.5 w-3.5 text-black" strokeWidth={3} />}
-              </span>
-              <span
-                className={cn(
-                  "text-[15px] leading-snug transition-all",
-                  task.done ? "text-fg-subtle line-through decoration-white/20" : "text-fg",
-                )}
-              >
-                {task.text}
-              </span>
-            </button>
-          </li>
-        ))}
+                <span
+                  className={cn(
+                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-all",
+                    task.done
+                      ? "border-transparent bg-gradient-brand"
+                      : "border-white/20 group-hover:border-white/40",
+                  )}
+                >
+                  {task.done && <Check className="h-3.5 w-3.5 text-black" strokeWidth={3} />}
+                </span>
+                <div className="flex flex-1 flex-col gap-0.5">
+                  <span
+                    className={cn(
+                      "text-[15px] leading-snug transition-all",
+                      task.done ? "text-fg-subtle line-through decoration-white/20" : "text-fg",
+                    )}
+                  >
+                    {task.text}
+                  </span>
+                  {link && (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 text-[10px] font-medium",
+                        task.done ? "text-fg-subtle" : "text-fg-muted",
+                      )}
+                    >
+                      <Sparkles className="h-2.5 w-2.5" />
+                      Toward {link.visionTitle}
+                    </span>
+                  )}
+                </div>
+              </button>
+            </li>
+          );
+        })}
       </ul>
 
       {tasks.length < 3 && (

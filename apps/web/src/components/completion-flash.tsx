@@ -40,15 +40,26 @@ export function useCompletionFlash() {
     return () => window.clearTimeout(t);
   }, [flash]);
 
-  const trigger = (context: CompletionContext) => {
-    const text = pickCompletionAffirmation(context);
-    const big = context === "day-complete";
-    setFlash({ key: Date.now(), text, big });
-    if (big) {
-      playDayComplete();
-    } else {
-      playTap();
+  /**
+   * Fire a flash. Pass a `CompletionContext` for the default affirmation-pool
+   * behavior, or an object with `text` to show a custom line (used for
+   * vision-linked priorities: "This moved you toward X").
+   */
+  const trigger = (
+    input: CompletionContext | { text: string; big?: boolean },
+  ) => {
+    if (typeof input === "string") {
+      const text = pickCompletionAffirmation(input);
+      const big = input === "day-complete";
+      setFlash({ key: Date.now(), text, big });
+      if (big) playDayComplete();
+      else playTap();
+      return;
     }
+    const { text, big = false } = input;
+    setFlash({ key: Date.now(), text, big });
+    if (big) playDayComplete();
+    else playTap();
   };
 
   return { flash, trigger };
