@@ -5,6 +5,7 @@ import { AffirmationCard } from "@/components/today/affirmation-card";
 import { NowNextCard } from "@/components/today/now-next-card";
 import { ReflectionCard } from "@/components/today/reflection-card";
 import { FocusTimer } from "@/components/today/focus-timer";
+import { WelcomeBack } from "@/components/today/welcome-back";
 import { greet, today } from "@/lib/utils";
 
 export default function TodayPage() {
@@ -17,6 +18,8 @@ export default function TodayPage() {
         </h1>
         <p className="mt-2 text-fg-muted">Let&apos;s shape a day that nourishes you.</p>
       </header>
+
+      <WelcomeBack />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2 flex flex-col gap-5">
