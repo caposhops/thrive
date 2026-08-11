@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Send, Cloud, HardDrive, Trash2, ChevronRight, WifiOff, Volume2, VolumeX } from "lucide-react";
+import { Send, Cloud, HardDrive, Trash2, ChevronRight, WifiOff, Volume2, VolumeX, Phone, PhoneOff } from "lucide-react";
 import { useLocalStorage } from "@/lib/use-local-storage";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/lib/supabase/use-user";
@@ -20,7 +20,11 @@ import {
 } from "@/lib/coach-styles";
 import { pickCoachWelcome } from "@/lib/coach-welcomes";
 import { MicButton } from "@/components/coach/mic-button";
-import { useSpeechSynthesis } from "@/lib/use-voice";
+import {
+  ConversationIndicator,
+  type ConversationPhase,
+} from "@/components/coach/conversation-indicator";
+import { useSpeechRecognition, useSpeechSynthesis } from "@/lib/use-voice";
 
 type Message = {
   id: string;
@@ -62,6 +66,25 @@ export default function CoachPage() {
   // Only speak coach replies that arrive DURING this session, never history
   // rehydrated from cloud on mount.
   const spokenMessageIdsRef = useRef<Set<string>>(new Set());
+
+  // ─── Conversation (hands-free) mode ─────────────────────────────────
+  // Off by default. When on, the input row is replaced by a phase
+  // indicator and the loop drives itself: listen → send → speak → listen.
+  const [conversationMode, setConversationMode] = useState(false);
+  const [phase, setPhase] = useState<ConversationPhase>("idle");
+  const [liveTranscript, setLiveTranscript] = useState("");
+  // Guard so overlapping SR events don't fire multiple sends.
+  const sendingRef = useRef(false);
+  // Live phase read from inside async callbacks that would otherwise close
+  // over a stale phase state.
+  const phaseRef = useRef<ConversationPhase>("idle");
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+  const conversationModeRef = useRef(false);
+  useEffect(() => {
+    conversationModeRef.current = conversationMode;
+  }, [conversationMode]);
 
   const isAuthed = !!user;
   const messages: Message[] = isAuthed ? (cloudMessages ?? []) : localMessages;
@@ -136,6 +159,67 @@ export default function CoachPage() {
     }
   };
 
+  // Conversation-mode speech recognition. Interim transcripts stream into the
+  // indicator so the user sees words appear as they speak. On a final
+  // transcript we auto-send. `onend` re-arms via the phase-driver effect below.
+  const conversationSR = useSpeechRecognition({
+    onTranscript: (text, isFinal) => {
+      if (!conversationModeRef.current) return;
+      setLiveTranscript(text);
+      if (isFinal && text.trim() && !sendingRef.current) {
+        sendingRef.current = true;
+        setPhase("thinking");
+        setLiveTranscript("");
+        void send(text);
+      }
+    },
+  });
+
+  // Drive the loop: whenever we ENTER the listening phase in conversation
+  // mode, (re-)start recognition. Whenever we leave, don't touch it — SR
+  // ends on its own once the user pauses.
+  useEffect(() => {
+    if (!conversationMode) return;
+    if (phase === "listening" && !conversationSR.listening) {
+      // A short delay avoids Chrome's "already-started" errors right after
+      // TTS ends or SR restarts.
+      const id = window.setTimeout(() => {
+        if (conversationModeRef.current && phaseRef.current === "listening") {
+          conversationSR.start();
+        }
+      }, 250);
+      return () => window.clearTimeout(id);
+    }
+  }, [phase, conversationMode, conversationSR]);
+
+  // TTS finished speaking in conversation mode → hand the turn back.
+  useEffect(() => {
+    if (!conversationMode) return;
+    if (phase === "speaking" && !tts.speaking) {
+      setPhase("listening");
+    }
+  }, [tts.speaking, phase, conversationMode]);
+
+  const enterConversation = () => {
+    setConversationMode(true);
+    setPhase("listening");
+    setLiveTranscript("");
+  };
+
+  const exitConversation = () => {
+    setConversationMode(false);
+    setPhase("idle");
+    setLiveTranscript("");
+    conversationSR.cancel();
+    tts.cancel();
+  };
+
+  const interruptCoach = () => {
+    // Barge-in during "speaking": cancel TTS and go back to listening.
+    tts.cancel();
+    setPhase("listening");
+  };
+
   const send = async (text: string) => {
     if (!text.trim() || thinking) return;
     const userMsg: Message = { id: crypto.randomUUID(), role: "user", text };
@@ -169,11 +253,21 @@ export default function CoachPage() {
         text: data.reply,
       };
       setMessages((m) => [...m, coachMsg]);
-      // Speak the fresh reply if TTS is enabled — but only real Claude replies,
-      // not the offline error line (that would be jarring)
+      // Speak the fresh reply if TTS is enabled OR if we're in conversation
+      // mode (where speaking is intrinsic to the loop, not a separate opt-in).
+      // Skip offline error lines either way — jarring to hear them read out.
       if (data.source !== "offline") {
         spokenMessageIdsRef.current.add(coachMsg.id);
-        tts.speak(data.reply);
+        const inConversation = conversationModeRef.current;
+        tts.speak(data.reply, { force: inConversation });
+        if (inConversation) {
+          // Sit in the "speaking" phase until the TTS onend fires and the
+          // listening effect below re-opens the mic.
+          setPhase("speaking");
+        }
+      } else if (conversationModeRef.current) {
+        // Offline in conversation mode: skip TTS, go back to listening
+        setPhase("listening");
       }
       // Only persist real Claude replies — don't clutter history with error messages
       if (user && data.source !== "offline") {
@@ -189,8 +283,10 @@ export default function CoachPage() {
           text: "I can't reach my brain right now — the connection dropped. Try once more?",
         },
       ]);
+      if (conversationModeRef.current) setPhase("listening");
     } finally {
       setThinking(false);
+      sendingRef.current = false;
     }
   };
 
@@ -248,7 +344,35 @@ export default function CoachPage() {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {tts.supported && (
+          {conversationSR.supported && tts.supported && (
+            <button
+              onClick={() =>
+                conversationMode ? exitConversation() : enterConversation()
+              }
+              aria-pressed={conversationMode}
+              className={cn(
+                "glass rounded-full p-2 transition-colors",
+                conversationMode
+                  ? "bg-rose-500/20 text-rose-200 hover:bg-rose-500/30"
+                  : "text-fg-subtle hover:text-fg",
+              )}
+              aria-label={
+                conversationMode ? "End conversation" : "Start conversation"
+              }
+              title={
+                conversationMode
+                  ? "End hands-free conversation"
+                  : "Hands-free conversation"
+              }
+            >
+              {conversationMode ? (
+                <PhoneOff className="h-3.5 w-3.5" />
+              ) : (
+                <Phone className="h-3.5 w-3.5" />
+              )}
+            </button>
+          )}
+          {tts.supported && !conversationMode && (
             <button
               onClick={() => {
                 if (!tts.muted) tts.cancel();
@@ -352,7 +476,7 @@ export default function CoachPage() {
         )}
       </div>
 
-      {messages.length <= 2 && (
+      {!conversationMode && messages.length <= 2 && (
         <div className="mt-4 flex flex-wrap gap-2">
           {prompts.map((p) => (
             <button
@@ -366,39 +490,48 @@ export default function CoachPage() {
         </div>
       )}
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          send(draft);
-        }}
-        className="mt-4 flex items-center gap-2"
-      >
-        <div className="glass-strong flex h-14 flex-1 items-center gap-2 rounded-full px-5">
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Share what's on your mind…"
-            className="h-full flex-1 bg-transparent text-[15px] text-fg outline-none placeholder:text-fg-subtle"
-            aria-label="Message the coach"
-          />
-        </div>
-        <MicButton
-          onTranscript={(text, isFinal) => {
-            // Live interim transcripts update the draft as the user speaks;
-            // the final one lands there too and the user hits send when ready.
-            setDraft(text);
-            void isFinal; // reserved — could auto-send on final later
-          }}
+      {conversationMode ? (
+        <ConversationIndicator
+          phase={thinking && phase !== "speaking" ? "thinking" : phase}
+          liveTranscript={liveTranscript}
+          onExit={exitConversation}
+          onInterrupt={interruptCoach}
         />
-        <button
-          type="submit"
-          disabled={!draft.trim() || thinking}
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-brand text-black shadow-glow transition-all active:scale-95 disabled:opacity-40"
-          aria-label="Send"
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            send(draft);
+          }}
+          className="mt-4 flex items-center gap-2"
         >
-          <Send className="h-5 w-5" />
-        </button>
-      </form>
+          <div className="glass-strong flex h-14 flex-1 items-center gap-2 rounded-full px-5">
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Share what's on your mind…"
+              className="h-full flex-1 bg-transparent text-[15px] text-fg outline-none placeholder:text-fg-subtle"
+              aria-label="Message the coach"
+            />
+          </div>
+          <MicButton
+            onTranscript={(text, isFinal) => {
+              // Live interim transcripts update the draft as the user speaks;
+              // the final one lands there too and the user hits send when ready.
+              setDraft(text);
+              void isFinal; // reserved — could auto-send on final later
+            }}
+          />
+          <button
+            type="submit"
+            disabled={!draft.trim() || thinking}
+            className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-brand text-black shadow-glow transition-all active:scale-95 disabled:opacity-40"
+            aria-label="Send"
+          >
+            <Send className="h-5 w-5" />
+          </button>
+        </form>
+      )}
     </div>
   );
 }
