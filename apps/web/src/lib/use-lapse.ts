@@ -17,6 +17,11 @@
 import { useEffect, useState } from "react";
 
 const LAST_OPENED_KEY = "thrive:last-opened";
+const ONBOARDING_KEY = "thrive:onboarding";
+// A sensible default gap for users who clearly used Thrive before but never
+// had their last-opened tracked (feature shipped while they were away).
+// 7 days puts them in tier 2 — "You're here. That's the whole thing."
+const BACKFILL_LAPSE_DAYS = 7;
 
 function isoDay(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -30,6 +35,31 @@ function calendarDaysBetween(pastISO: string, todayISO: string): number {
   return Math.floor(
     (today.getTime() - past.getTime()) / (1000 * 60 * 60 * 24),
   );
+}
+
+/**
+ * Detect real Thrive activity in localStorage — priorities, plans, reflections,
+ * coach messages, vision milestones, etc. `thrive:onboarding` is excluded so a
+ * user who just finished onboarding and lands on /today for the first time
+ * doesn't get greeted as a returner.
+ */
+function hasPriorActivity(): boolean {
+  try {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (
+        key &&
+        key.startsWith("thrive:") &&
+        key !== LAST_OPENED_KEY &&
+        key !== ONBOARDING_KEY
+      ) {
+        return true;
+      }
+    }
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 export function useLapse() {
@@ -52,6 +82,12 @@ export function useLapse() {
       // Only positive gaps count — clock skew (or a user rewinding their
       // system time) should not accidentally trigger the welcome card.
       setLapseDays(gap > 0 ? gap : 0);
+    } else if (hasPriorActivity()) {
+      // Missing last-opened but the user clearly has Thrive history — this
+      // happens the first time an existing user opens Thrive after the
+      // welcome-back feature ships. Show them a card too; we just don't
+      // know the exact gap, so default to tier 2.
+      setLapseDays(BACKFILL_LAPSE_DAYS);
     } else {
       // First-ever visit: no lapse to celebrate or forgive.
       setLapseDays(0);
