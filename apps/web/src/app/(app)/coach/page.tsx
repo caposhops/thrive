@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Send, Cloud, HardDrive, Trash2, ChevronRight, WifiOff } from "lucide-react";
+import { Send, Cloud, HardDrive, Trash2, ChevronRight, WifiOff, Volume2, VolumeX } from "lucide-react";
 import { useLocalStorage } from "@/lib/use-local-storage";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/lib/supabase/use-user";
@@ -19,6 +19,8 @@ import {
   type CoachStyleKey,
 } from "@/lib/coach-styles";
 import { pickCoachWelcome } from "@/lib/coach-welcomes";
+import { MicButton } from "@/components/coach/mic-button";
+import { useSpeechSynthesis } from "@/lib/use-voice";
 
 type Message = {
   id: string;
@@ -56,6 +58,10 @@ export default function CoachPage() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [contextBlock, setContextBlock] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const tts = useSpeechSynthesis();
+  // Only speak coach replies that arrive DURING this session, never history
+  // rehydrated from cloud on mount.
+  const spokenMessageIdsRef = useRef<Set<string>>(new Set());
 
   const isAuthed = !!user;
   const messages: Message[] = isAuthed ? (cloudMessages ?? []) : localMessages;
@@ -163,6 +169,12 @@ export default function CoachPage() {
         text: data.reply,
       };
       setMessages((m) => [...m, coachMsg]);
+      // Speak the fresh reply if TTS is enabled — but only real Claude replies,
+      // not the offline error line (that would be jarring)
+      if (data.source !== "offline") {
+        spokenMessageIdsRef.current.add(coachMsg.id);
+        tts.speak(data.reply);
+      }
       // Only persist real Claude replies — don't clutter history with error messages
       if (user && data.source !== "offline") {
         void saveCoachMessage(user.id, "coach", data.reply);
@@ -236,6 +248,29 @@ export default function CoachPage() {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
+          {tts.supported && (
+            <button
+              onClick={() => {
+                if (!tts.muted) tts.cancel();
+                tts.setMuted(!tts.muted);
+              }}
+              aria-pressed={!tts.muted}
+              className={cn(
+                "glass rounded-full p-2 transition-colors",
+                tts.muted
+                  ? "text-fg-subtle hover:text-fg"
+                  : "text-teal-300 hover:text-teal-200",
+              )}
+              aria-label={tts.muted ? "Read replies aloud" : "Stop reading replies"}
+              title={tts.muted ? "Read replies aloud" : "Stop reading replies"}
+            >
+              {tts.muted ? (
+                <VolumeX className="h-3.5 w-3.5" />
+              ) : (
+                <Volume2 className="h-3.5 w-3.5" />
+              )}
+            </button>
+          )}
           <Link
             href="/settings#coach"
             className="glass inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] text-fg-muted transition-colors hover:bg-white/[0.08] hover:text-fg"
@@ -347,6 +382,14 @@ export default function CoachPage() {
             aria-label="Message the coach"
           />
         </div>
+        <MicButton
+          onTranscript={(text, isFinal) => {
+            // Live interim transcripts update the draft as the user speaks;
+            // the final one lands there too and the user hits send when ready.
+            setDraft(text);
+            void isFinal; // reserved — could auto-send on final later
+          }}
+        />
         <button
           type="submit"
           disabled={!draft.trim() || thinking}
