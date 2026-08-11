@@ -153,6 +153,7 @@ export function useSpeechSynthesis() {
   const [supported, setSupported] = useState(false);
   const [muted, setMutedState] = useState<boolean>(true);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [speaking, setSpeaking] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -192,8 +193,10 @@ export function useSpeechSynthesis() {
   const voice = useMemo(() => pickVoice(voices), [voices]);
 
   const speak = useCallback(
-    (text: string) => {
-      if (!supported || muted || !text.trim()) return;
+    (text: string, opts?: { force?: boolean }) => {
+      // `force: true` speaks even when muted — used by conversation mode
+      // where TTS is intrinsic to the loop, not a separate opt-in.
+      if (!supported || (!opts?.force && muted) || !text.trim()) return;
       // Interrupt anything queued so the newest message wins
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
@@ -201,14 +204,20 @@ export function useSpeechSynthesis() {
       u.rate = 1.0;
       u.pitch = 1.0;
       u.volume = 1.0;
+      u.onstart = () => setSpeaking(true);
+      u.onend = () => setSpeaking(false);
+      u.onerror = () => setSpeaking(false);
       window.speechSynthesis.speak(u);
     },
     [supported, muted, voice],
   );
 
   const cancel = useCallback(() => {
-    if (supported) window.speechSynthesis.cancel();
+    if (supported) {
+      window.speechSynthesis.cancel();
+      setSpeaking(false);
+    }
   }, [supported]);
 
-  return { supported, muted, setMuted, speak, cancel, voice };
+  return { supported, muted, setMuted, speaking, speak, cancel, voice };
 }
