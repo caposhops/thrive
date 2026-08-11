@@ -366,7 +366,9 @@ function BlockRow({
   return (
     <div
       className={cn(
-        "glass group flex items-center gap-2 rounded-2xl p-2 pl-3 transition-all",
+        // flex-wrap + order-last on title puts the title on its own full-width
+        // row on mobile, then everything reflows to a single row at sm.
+        "glass group flex flex-wrap items-center gap-2 rounded-2xl p-2 pl-3 transition-all",
         block.done && "opacity-60",
       )}
     >
@@ -385,7 +387,8 @@ function BlockRow({
         onBlur={commitTitle}
         onKeyDown={(e) => e.key === "Enter" && commitTitle()}
         className={cn(
-          "h-10 flex-1 min-w-0 rounded-xl bg-transparent px-2 text-[15px] text-fg outline-none focus:bg-white/[0.04]",
+          "h-10 order-last basis-full rounded-xl bg-transparent px-2 text-[15px] text-fg outline-none focus:bg-white/[0.04]",
+          "sm:order-none sm:basis-auto sm:flex-1 sm:min-w-0",
           block.done && "line-through decoration-white/20",
         )}
         aria-label="Block title"
