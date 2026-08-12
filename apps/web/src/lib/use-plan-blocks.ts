@@ -59,6 +59,32 @@ function fromCloud(row: PlanBlockRow): PlanBlock {
   };
 }
 
+/**
+ * View-independent move: works for cloud + local, no React state involved.
+ * The hook's moveBlockDate uses this after updating its local list; undo
+ * flows can call it directly from anywhere without needing a hook bound to
+ * either the source or target date.
+ */
+export async function moveBlockBetweenDates(args: {
+  id: string;
+  block: PlanBlock;
+  fromDate: string;
+  toDate: string;
+  isAuthed: boolean;
+}): Promise<void> {
+  const { id, block, fromDate, toDate, isAuthed } = args;
+  if (fromDate === toDate) return;
+  if (isAuthed) {
+    await cloudUpdate(id, { for_date: toDate });
+    return;
+  }
+  // Local storage: remove from source key, append to target key
+  const fromList = readLocal(fromDate).filter((b) => b.id !== id);
+  writeLocal(fromDate, fromList);
+  const toList = readLocal(toDate);
+  writeLocal(toDate, sortByTime([...toList, block]));
+}
+
 function sortByTime(blocks: PlanBlock[]): PlanBlock[] {
   return [...blocks].sort((a, b) => a.start_time.localeCompare(b.start_time));
 }
@@ -179,12 +205,37 @@ export function usePlanBlocks(forDate?: string) {
     [isAuthed, effectiveDate],
   );
 
+  /**
+   * Move a block from the current view's date onto a different date. Removes
+   * it from the visible list optimistically. For local mode, mutates both
+   * the source day's key AND the target day's key so the block reappears on
+   * the target date's plan. For cloud mode, updates the row's for_date.
+   */
+  const moveBlockDate = useCallback(
+    async (id: string, targetDate: string) => {
+      if (targetDate === effectiveDate) return;
+      const moving = blocks.find((b) => b.id === id);
+      if (!moving) return;
+      // Optimistic UI: drop it from the current view immediately
+      setBlocks((prev) => prev.filter((b) => b.id !== id));
+      await moveBlockBetweenDates({
+        id,
+        block: moving,
+        fromDate: effectiveDate,
+        toDate: targetDate,
+        isAuthed,
+      });
+    },
+    [blocks, isAuthed, effectiveDate],
+  );
+
   return {
     blocks,
     loading,
     addBlock,
     editBlock,
     removeBlock,
+    moveBlockDate,
     isAuthed,
     forDate: effectiveDate,
     isToday,
