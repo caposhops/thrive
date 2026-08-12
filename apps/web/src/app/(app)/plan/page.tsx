@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import {
   Plus,
-  Trash2,
   Bell,
   BellOff,
   ArrowRight,
@@ -17,7 +16,7 @@ import {
 import { Card, CardEyebrow, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { usePlanBlocks } from "@/lib/use-plan-blocks";
+import { usePlanBlocks, moveBlockBetweenDates } from "@/lib/use-plan-blocks";
 import { formatTime12 } from "@/lib/plan-time";
 import {
   permissionState,
@@ -29,6 +28,10 @@ import { CompletionFlash, useCompletionFlash } from "@/components/completion-fla
 import { DurationPicker } from "@/components/plan/duration-picker";
 import type { DurationMinutes } from "@/lib/plan-duration";
 import { PlanDatePicker } from "@/components/plan/date-picker";
+import {
+  BlockActionsMenu,
+  relativeLabel,
+} from "@/components/plan/block-actions-menu";
 import { todayISO } from "@/lib/streaks";
 
 type Suggestion = { start_time: string; title: string };
@@ -59,7 +62,7 @@ function PlanPageInner() {
   const selectedDate = isValidISODate(urlDate) ? (urlDate as string) : todayISO();
   const isToday = selectedDate === todayISO();
 
-  const { blocks, loading, addBlock, editBlock, removeBlock, isAuthed } =
+  const { blocks, loading, addBlock, editBlock, removeBlock, moveBlockDate, isAuthed } =
     usePlanBlocks(selectedDate);
   const [permission, setPermission] = useState<
     NotificationPermission | "unsupported"
@@ -68,6 +71,70 @@ function PlanPageInner() {
   const [draftTitle, setDraftTitle] = useState("");
   const { flash, trigger } = useCompletionFlash();
   const [draftDuration, setDraftDuration] = useState<DurationMinutes>(null);
+
+  // Small toast that appears after a Move-to-date and offers Undo for a few
+  // seconds. Cleared on any subsequent move so it always reflects the latest.
+  type MoveToast = {
+    id: string;
+    title: string;
+    from: string; // ISO
+    to: string;   // ISO
+    // A snapshot of the block at the moment of the move — used by undo so
+    // the local-storage path can restore it into the source day even after
+    // the hook has already dropped it from the visible list.
+    snapshot: {
+      id: string;
+      start_time: string;
+      duration_minutes: number | null;
+      title: string;
+      done: boolean;
+    };
+    key: number; // re-triggers the auto-dismiss timer
+  };
+  const [moveToast, setMoveToast] = useState<MoveToast | null>(null);
+
+  useEffect(() => {
+    if (!moveToast) return;
+    const t = window.setTimeout(() => setMoveToast(null), 5500);
+    return () => window.clearTimeout(t);
+  }, [moveToast?.key]);
+
+  const handleMove = async (blockId: string, targetDate: string) => {
+    const b = blocks.find((x) => x.id === blockId);
+    if (!b || targetDate === selectedDate) return;
+    await moveBlockDate(blockId, targetDate);
+    setMoveToast({
+      id: blockId,
+      title: b.title,
+      from: selectedDate,
+      to: targetDate,
+      snapshot: {
+        id: b.id,
+        start_time: b.start_time,
+        duration_minutes: b.duration_minutes,
+        title: b.title,
+        done: b.done,
+      },
+      key: Date.now(),
+    });
+  };
+
+  const undoMove = async () => {
+    if (!moveToast) return;
+    await moveBlockBetweenDates({
+      id: moveToast.id,
+      block: moveToast.snapshot,
+      fromDate: moveToast.to,
+      toDate: moveToast.from,
+      isAuthed,
+    });
+    // If the user is currently viewing the source day, the block will
+    // reappear on next hydrate. Force a re-hydrate by nudging the URL.
+    if (selectedDate === moveToast.from) {
+      router.refresh();
+    }
+    setMoveToast(null);
+  };
 
   const setSelectedDate = (next: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -183,6 +250,25 @@ function PlanPageInner() {
         </div>
       </header>
 
+      {moveToast && (
+        <div
+          key={moveToast.key}
+          className="glass mb-4 flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm"
+          role="status"
+        >
+          <p className="text-fg">
+            Moved <span className="font-medium">&ldquo;{moveToast.title}&rdquo;</span>{" "}
+            to <span className="text-fg">{relativeLabel(moveToast.to, moveToast.from)}</span>
+          </p>
+          <button
+            onClick={undoMove}
+            className="rounded-full bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-fg transition-colors hover:bg-white/[0.12]"
+          >
+            Undo
+          </button>
+        </div>
+      )}
+
       {/* Notifications banner — only for today's plan */}
       {isToday && permission === "default" && blocks.length > 0 && (
         <Card className="mb-6 flex flex-col gap-3 bg-gradient-glow sm:flex-row sm:items-center sm:justify-between">
@@ -222,6 +308,7 @@ function PlanPageInner() {
             <li key={block.id}>
               <BlockRow
                 block={block}
+                currentDate={selectedDate}
                 onTitleChange={(title) => editBlock(block.id, { title })}
                 onTimeChange={(start_time) => editBlock(block.id, { start_time })}
                 onDurationChange={(duration_minutes) =>
@@ -237,6 +324,7 @@ function PlanPageInner() {
                     trigger(remaining === 0 ? "day-complete" : "block-done");
                   }
                 }}
+                onMove={(targetDate) => handleMove(block.id, targetDate)}
                 onDelete={() => removeBlock(block.id)}
               />
             </li>
@@ -325,10 +413,12 @@ function PlanPageInner() {
 
 function BlockRow({
   block,
+  currentDate,
   onTitleChange,
   onTimeChange,
   onDurationChange,
   onToggleDone,
+  onMove,
   onDelete,
 }: {
   block: {
@@ -338,10 +428,12 @@ function BlockRow({
     done: boolean;
     duration_minutes: DurationMinutes;
   };
+  currentDate: string;
   onTitleChange: (title: string) => void;
   onTimeChange: (time: string) => void;
   onDurationChange: (duration: DurationMinutes) => void;
   onToggleDone: () => void;
+  onMove: (targetDate: string) => void;
   onDelete: () => void;
 }) {
   const [localTitle, setLocalTitle] = useState(block.title);
@@ -411,13 +503,11 @@ function BlockRow({
       >
         <span className="text-xs font-semibold">{block.done ? "✓" : ""}</span>
       </button>
-      <button
-        onClick={onDelete}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-fg-subtle transition-all hover:bg-rose-500/20 hover:text-rose-300 focus:bg-rose-500/20 focus:text-rose-300 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-        aria-label="Delete block"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      <BlockActionsMenu
+        currentDate={currentDate}
+        onMoveToDate={onMove}
+        onDelete={onDelete}
+      />
     </div>
   );
 }

@@ -78,7 +78,13 @@ export async function updateBlock(
   patch: Partial<
     Pick<
       PlanBlockRow,
-      "start_time" | "duration_minutes" | "title" | "notes" | "done" | "position"
+      | "start_time"
+      | "duration_minutes"
+      | "title"
+      | "notes"
+      | "done"
+      | "position"
+      | "for_date"
     >
   >,
 ) {
